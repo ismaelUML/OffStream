@@ -85,9 +85,10 @@ def run_cli() -> None:
 
         sys.stdout.write("\n")
         if job.status == JobStatus.COMPLETED:
-            print(f"[✓] Download Finished! Saved to: {job.output_path}\n")
+            print(f"[SUCCESS] Download Finished! Saved to: {job.output_path}\n")
         else:
-            print(f"[✗] Download Failed: {job.error_message}\n")
+            print(f"[FAILED] Download Failed: {job.error_message}\n")
+
 
     except KeyboardInterrupt:
         print("\nOperation cancelled by user.")
