@@ -11,8 +11,11 @@ const jobsList = document.getElementById("jobs-list");
 
 // Automatically prefill current active YouTube tab URL
 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-  if (tabs && tabs[0] && tabs[0].url && tabs[0].url.includes("youtube.com")) {
-    urlInput.value = tabs[0].url;
+  if (tabs && tabs[0] && tabs[0].url) {
+    const tabUrl = tabs[0].url;
+    if (tabUrl.includes("youtube.com") || tabUrl.includes("youtu.be")) {
+      urlInput.value = tabUrl;
+    }
   }
 });
 
