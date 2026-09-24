@@ -94,9 +94,17 @@ class DownloadManager(DownloadUseCasePort):
             job.mark_failed(str(err))
 
     def _process_audio_pipeline(self, job: DownloadJob, metadata: VideoMetadata) -> str:
+        dest_path = self._storage.get_output_path(f"{metadata.clean_title}.mp3", is_audio=True)
+        if hasattr(self._downloader, "download_direct"):
+            return self._downloader.download_direct(
+                job.source_url,
+                dest_path,
+                is_audio=True,
+                progress_callback=job.update_progress,
+            )
+
         audio_stream = select_best_audio_stream(metadata.formats)
         temp_audio = self._storage.create_temp_path(f"audio_{job.job_id}", audio_stream.extension)
-
         try:
             self._downloader.download_stream(
                 audio_stream,
@@ -104,18 +112,25 @@ class DownloadManager(DownloadUseCasePort):
                 progress_callback=lambda p: job.update_progress(p * 0.85),
             )
             job.status = JobStatus.MUXING
-            dest_path = self._storage.get_output_path(f"{metadata.clean_title}.mp3", is_audio=True)
             return self._processor.convert_to_mp3(temp_audio, dest_path)
         finally:
             self._storage.remove_files([temp_audio])
 
     def _process_video_pipeline(self, job: DownloadJob, metadata: VideoMetadata) -> str:
+        dest_path = self._storage.get_output_path(f"{metadata.clean_title}.mp4", is_audio=False)
+        if hasattr(self._downloader, "download_direct"):
+            return self._downloader.download_direct(
+                job.source_url,
+                dest_path,
+                is_audio=False,
+                quality=job.target_quality,
+                progress_callback=job.update_progress,
+            )
+
         video_stream = select_video_stream(metadata.formats, job.target_quality)
         audio_stream = select_best_audio_stream(metadata.formats)
-
         temp_video = self._storage.create_temp_path(f"video_{job.job_id}", video_stream.extension)
         temp_audio = self._storage.create_temp_path(f"audio_{job.job_id}", audio_stream.extension)
-
         try:
             self._downloader.download_stream(
                 video_stream,
@@ -127,9 +142,8 @@ class DownloadManager(DownloadUseCasePort):
                 temp_audio,
                 progress_callback=lambda p: job.update_progress(50.0 + (p * 0.35)),
             )
-
             job.status = JobStatus.MUXING
-            dest_path = self._storage.get_output_path(f"{metadata.clean_title}.mp4", is_audio=False)
             return self._processor.mux_video_audio(temp_video, temp_audio, dest_path)
         finally:
             self._storage.remove_files([temp_video, temp_audio])
+

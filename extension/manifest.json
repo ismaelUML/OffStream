@@ -28,12 +28,12 @@
   "content_scripts": [
     {
       "matches": [
-        "*://*.youtube.com/watch*",
-        "*://*.youtube.com/shorts*"
+        "*://*.youtube.com/*"
       ],
       "js": ["content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     }
   ]
+
 }

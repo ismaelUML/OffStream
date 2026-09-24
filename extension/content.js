@@ -5,16 +5,29 @@
 
 const DAEMON_URL = "http://127.0.0.1:8765";
 
+console.log("%c[YT Global DL] Extension loaded and monitoring YouTube pages", "color: #a78bfa; font-weight: bold;");
+
+function isWatchPage() {
+  return window.location.pathname === "/watch" || window.location.pathname.startsWith("/shorts");
+}
+
 function initButtonInjection() {
-  if (document.getElementById("yt-gdl-btn-container")) {
+  if (!isWatchPage()) {
     return;
   }
 
-  // Try multiple modern YouTube insertion points (subscribe button is most reliable)
+  const existing = document.getElementById("yt-gdl-btn-container");
+  if (existing && document.body.contains(existing)) {
+    return;
+  }
+
+  // Target multiple modern YouTube insertion points (subscribe button is most reliable)
   const subscribeBtn =
     document.querySelector("#owner #subscribe-button") ||
     document.querySelector("#subscribe-button") ||
     document.querySelector("ytd-subscribe-button-renderer");
+
+  const ownerContainer = document.querySelector("#owner") || document.querySelector("ytd-video-owner-renderer");
 
   const targetBar =
     document.querySelector("#top-level-buttons-computed") ||
@@ -22,10 +35,9 @@ function initButtonInjection() {
     document.querySelector(".ytd-watch-metadata #actions") ||
     document.querySelector("#actions.ytd-watch-metadata");
 
-  if (!subscribeBtn && !targetBar) {
+  if (!subscribeBtn && !ownerContainer && !targetBar) {
     return;
   }
-
 
   const container = document.createElement("div");
   container.id = "yt-gdl-btn-container";
@@ -61,12 +73,17 @@ function initButtonInjection() {
     </div>
   `;
 
+  // Insert next to subscribe button or owner
   if (subscribeBtn && subscribeBtn.parentElement) {
     subscribeBtn.parentElement.insertBefore(container, subscribeBtn.nextSibling);
+    console.log("[YT Global DL] Download button injected next to Subscribe button!");
+  } else if (ownerContainer) {
+    ownerContainer.appendChild(container);
+    console.log("[YT Global DL] Download button injected inside Owner container!");
   } else if (targetBar) {
     targetBar.appendChild(container);
+    console.log("[YT Global DL] Download button injected inside Actions bar!");
   }
-
 
   const trigger = container.querySelector("#yt-gdl-trigger");
   const menu = container.querySelector("#yt-gdl-menu");
@@ -124,7 +141,7 @@ function pollJobProgress(jobId) {
 
       if (job.status === "completed") {
         clearInterval(interval);
-        showToast(`✓ Download Complete!\nSaved to Downloads/yt-global-dl`, 100);
+        showToast("✓ Download Complete!\nSaved to Downloads/yt-global-dl", 100);
       } else if (job.status === "failed") {
         clearInterval(interval);
         showToast(`✗ Failed: ${job.error_message}`, 0, true);
@@ -134,7 +151,7 @@ function pollJobProgress(jobId) {
     } catch {
       clearInterval(interval);
     }
-  }, 750);
+  }, 500);
 }
 
 let activeToastTimeout = null;
@@ -177,4 +194,14 @@ const observer = new MutationObserver(() => initButtonInjection());
 observer.observe(document.body, { childList: true, subtree: true });
 
 window.addEventListener("yt-navigate-finish", initButtonInjection);
+window.addEventListener("yt-page-data-updated", initButtonInjection);
+window.addEventListener("spfdone", initButtonInjection);
+
+// Regular periodic heartbeat to re-check injection
+setInterval(() => {
+  if (isWatchPage()) {
+    initButtonInjection();
+  }
+}, 1000);
+
 initButtonInjection();

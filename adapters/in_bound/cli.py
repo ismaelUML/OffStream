@@ -7,8 +7,8 @@ import time
 from core.circuit_breaker import ResilientStreamResolver
 from core.download_manager import DownloadManager
 from domain.models import JobStatus, MediaKind, QualityTarget
+from adapters.out_bound.fast_downloader import FastMediaDownloader
 from adapters.out_bound.ffmpeg_processor import FFmpegProcessorAdapter
-from adapters.out_bound.http_downloader import HttpStreamingDownloader
 from adapters.out_bound.innertube_resolver import InnerTubeResolver
 from adapters.out_bound.local_storage import LocalStorageAdapter
 from adapters.out_bound.ytdlp_resolver import YtDlpResolver
@@ -17,10 +17,10 @@ from adapters.out_bound.ytdlp_resolver import YtDlpResolver
 def build_default_manager() -> DownloadManager:
     """Dependency Injection bootstrap assembling the hexagonal graph."""
     storage = LocalStorageAdapter()
-    downloader = HttpStreamingDownloader()
+    downloader = FastMediaDownloader()
     processor = FFmpegProcessorAdapter()
-    primary_resolver = InnerTubeResolver()
-    fallback_resolver = YtDlpResolver()
+    primary_resolver = YtDlpResolver()
+    fallback_resolver = InnerTubeResolver()
 
     router = ResilientStreamResolver([primary_resolver, fallback_resolver])
     return DownloadManager(
@@ -29,6 +29,7 @@ def build_default_manager() -> DownloadManager:
         processor=processor,
         storage=storage,
     )
+
 
 
 def run_cli() -> None:
