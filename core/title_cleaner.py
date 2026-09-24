@@ -4,11 +4,14 @@ Cyclomatic Complexity target: M <= 5.
 """
 import re
 
+_NOISE_TOKENS = r"(?:official\s+(?:music\s+)?video|official\s+audio|4k|hd|1080p|60fps|remastered|lyrics?|audio|video)"
+
 _NOISE_PATTERNS = [
-    re.compile(r"\[\s*(?:official\s+video|official\s+audio|official\s+music\s+video|4k|hd|1080p|60fps|remastered|lyric\s+video|lyrics)\s*\]", re.IGNORECASE),
-    re.compile(r"\(\s*(?:official\s+video|official\s+audio|official\s+music\s+video|4k|hd|1080p|60fps|remastered|lyric\s+video|lyrics)\s*\)", re.IGNORECASE),
-    re.compile(r"\|\s*(?:official\s+video|official\s+audio|4k|hd)\s*$", re.IGNORECASE),
+    re.compile(rf"\[(?:\s*{_NOISE_TOKENS}\s*)+\]", re.IGNORECASE),
+    re.compile(rf"\((?:\s*{_NOISE_TOKENS}\s*)+\)", re.IGNORECASE),
+    re.compile(rf"\|\s*{_NOISE_TOKENS}\s*$", re.IGNORECASE),
 ]
+
 
 _INVALID_FS_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
