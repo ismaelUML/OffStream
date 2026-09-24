@@ -16,32 +16,28 @@ function initButtonInjection() {
     return;
   }
 
+  // Also try injecting player control button
+  initPlayerButtonInjection();
+
   const existing = document.getElementById("yt-gdl-btn-container");
   if (existing && document.body.contains(existing)) {
     return;
   }
-
-  // 1. Look for #top-row (the container holding #owner and #actions)
-  const topRow =
-    document.querySelector("#top-row.ytd-watch-metadata") ||
-    document.querySelector("#top-row") ||
-    document.querySelector("ytd-watch-metadata #top-row");
 
   const actions =
     document.querySelector("#actions.ytd-watch-metadata") ||
     document.querySelector("#actions") ||
     document.querySelector("#actions-inner");
 
+  const topRow =
+    document.querySelector("#top-row.ytd-watch-metadata") ||
+    document.querySelector("#top-row");
+
   const owner =
     document.querySelector("#owner.ytd-watch-metadata") ||
-    document.querySelector("#owner") ||
-    document.querySelector("ytd-video-owner-renderer");
+    document.querySelector("#owner");
 
-  const subBtn =
-    document.querySelector("ytd-subscribe-button-renderer") ||
-    document.querySelector("#subscribe-button");
-
-  if (!topRow && !actions && !owner && !subBtn) {
+  if (!actions && !topRow && !owner) {
     return;
   }
 
@@ -79,23 +75,16 @@ function initButtonInjection() {
     </div>
   `;
 
-  // Placement priority:
-  // Priority 1: In #top-row between #owner and #actions (The large empty gap!)
-  if (topRow && actions && actions.parentElement === topRow) {
-    topRow.insertBefore(container, actions);
-    console.log("[YT Global DL] Injected in #top-row before #actions.");
-  } else if (actions && actions.parentElement) {
+  // Guaranteed placement: Insert right BEFORE #actions (in the big open gap)
+  if (actions && actions.parentElement) {
     actions.parentElement.insertBefore(container, actions);
-    console.log("[YT Global DL] Injected before #actions.");
+    console.log("[YT Global DL] Success: Download button injected before #actions!");
+  } else if (topRow) {
+    topRow.appendChild(container);
+    console.log("[YT Global DL] Success: Injected inside #top-row!");
   } else if (owner && owner.parentElement) {
     owner.parentElement.insertBefore(container, owner.nextSibling);
-    console.log("[YT Global DL] Injected after #owner.");
-  } else if (subBtn && subBtn.parentElement) {
-    subBtn.parentElement.insertBefore(container, subBtn.nextSibling);
-    console.log("[YT Global DL] Injected next to subscribe button.");
-  } else if (actions) {
-    actions.prepend(container);
-    console.log("[YT Global DL] Prepended to #actions.");
+    console.log("[YT Global DL] Success: Injected after #owner!");
   }
 
   const trigger = container.querySelector("#yt-gdl-trigger");
@@ -119,6 +108,37 @@ function initButtonInjection() {
       triggerDownload(window.location.href, kind, quality);
     });
   });
+}
+
+function initPlayerButtonInjection() {
+  const rightControls = document.querySelector(".ytp-right-controls");
+  if (!rightControls || document.getElementById("yt-gdl-player-btn")) {
+    return;
+  }
+
+  const playerBtn = document.createElement("button");
+  playerBtn.id = "yt-gdl-player-btn";
+  playerBtn.className = "ytp-button yt-gdl-player-btn";
+  playerBtn.title = "Download Video/Audio (YT Global DL)";
+  playerBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" style="width: 22px; height: 22px; fill: white; vertical-align: middle; margin-top: 8px;">
+      <path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/>
+    </svg>
+  `;
+
+  playerBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const trigger = document.getElementById("yt-gdl-trigger");
+    if (trigger) {
+      trigger.click();
+      trigger.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      triggerDownload(window.location.href, "audio", "audio_high");
+    }
+  });
+
+  rightControls.prepend(playerBtn);
+  console.log("[YT Global DL] Success: Player controls button injected.");
 }
 
 async function triggerDownload(url, kind, quality) {
@@ -214,7 +234,7 @@ window.addEventListener("yt-navigate-finish", initButtonInjection);
 window.addEventListener("yt-page-data-updated", initButtonInjection);
 window.addEventListener("spfdone", initButtonInjection);
 
-// Interval heartbeat retry
+// Regular periodic heartbeat to re-check injection
 setInterval(() => {
   if (isWatchPage()) {
     initButtonInjection();

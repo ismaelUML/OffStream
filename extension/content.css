@@ -152,3 +152,20 @@
   width: 0%;
   transition: width 0.3s ease;
 }
+
+.yt-gdl-player-btn {
+  width: 48px !important;
+  height: 100% !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  opacity: 0.9 !important;
+  transition: opacity 0.15s ease, transform 0.15s ease !important;
+}
+
+.yt-gdl-player-btn:hover {
+  opacity: 1 !important;
+  transform: scale(1.12) !important;
+}
+
