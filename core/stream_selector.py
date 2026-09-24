@@ -1,25 +1,24 @@
-"""Stream Selection Strategy.
-Single Responsibility: Find best matching streams based on requested quality targets.
-Complexity Target: M <= 4.
-"""
+# YouTube no te sirve videos en 1080p con audio pegado; divide todo en streams DASH separados
+# para ahorrar ancho de banda. Si no cazamos el audio y el video por separado y los unimos,
+# te queda una película muda. Este módulo se encarga de elegir las mejores pistas.
 from typing import List, Optional
 from domain.exceptions import StreamNotFoundError
 from domain.models import QualityTarget, StreamFormat
 
 
 def select_best_audio_stream(formats: List[StreamFormat]) -> StreamFormat:
-    """Find the highest bitrate audio stream."""
+    # Filtramos solo pistas de audio y nos quedamos con la de mayor bitrate (menos compresión)
     audio_candidates = [f for f in formats if f.is_audio]
     if not audio_candidates:
-        raise StreamNotFoundError("No audio stream available for this media.")
+        raise StreamNotFoundError("YouTube no devolvió ninguna pista de audio para este video.")
     return max(audio_candidates, key=_get_bitrate)
 
 
 def select_video_stream(formats: List[StreamFormat], quality: QualityTarget) -> StreamFormat:
-    """Find optimal video stream matching quality target."""
+    # Si el usuario quiere 720p buscamos ese perfil; si no, le mandamos la resolución más bestia que haya
     video_candidates = [f for f in formats if f.is_video]
     if not video_candidates:
-        raise StreamNotFoundError("No video stream available for this media.")
+        raise StreamNotFoundError("No encontramos ninguna pista de video válida en la respuesta.")
 
     if quality == QualityTarget.P720:
         match = _find_720p_stream(video_candidates)

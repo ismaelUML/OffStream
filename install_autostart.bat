@@ -1,5 +1,8 @@
 @echo off
 title Install YT Global DL to Windows Startup
+:: Metemos un acceso directo en la carpeta de Inicio de Windows (shell:startup)
+:: apuntando a start_silent.vbs. Así el daemon arranca solo cuando prendes la PC
+:: y la extensión de Chrome siempre tiene a quién hablarle sin que tengas que abrir nada a mano.
 echo Setting up YT Global DL to launch automatically on Windows startup...
 
 powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sFolder = [System.Environment]::GetFolderPath('Startup'); $sFile = Join-Path $sFolder 'YT-Global-DL.lnk'; $target = (Resolve-Path '.\start_silent.vbs').Path; $sc = $ws.CreateShortcut($sFile); $sc.TargetPath = 'wscript.exe'; $sc.Arguments = '`\"' + $target + '`\"'; $sc.WorkingDirectory = (Resolve-Path '.').Path; $sc.Save(); Write-Host '[SUCCESS] Added to Windows Startup folder.' -ForegroundColor Green"

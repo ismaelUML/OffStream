@@ -1,7 +1,6 @@
-"""Local filesystem storage adapter.
-Implements StoragePort.
-Adheres to SRP and ISP.
-"""
+# Manejo del sistema de archivos local.
+# Centraliza dónde guardamos los videos y la música sin ensuciarle el escritorio al usuario,
+# y maneja los archivos temporales para que dos descargas simultáneas no se pisen.
 import os
 import shutil
 import tempfile
@@ -10,11 +9,11 @@ from typing import List
 
 
 class LocalStorageAdapter:
-    """Manages output folders and temporary files."""
-
     def __init__(self, base_output_dir: str = "") -> None:
         if not base_output_dir:
-            # Default to user's home Downloads/yt-global-dl
+            # En Windows Path.home() resuelve C:\Users\Nombre.
+            # Tiramos todo a Downloads/yt-global-dl para que el usuario encuentre sus cosas
+            # sin tener que adivinar dónde carajo quedó guardado el archivo.
             home = Path.home()
             self._base_dir = home / "Downloads" / "yt-global-dl"
         else:
@@ -27,6 +26,7 @@ class LocalStorageAdapter:
         self._initialize_directories()
 
     def _initialize_directories(self) -> None:
+        # Creamos las carpetas si no existen; si ya existen, no chilla
         self._video_dir.mkdir(parents=True, exist_ok=True)
         self._audio_dir.mkdir(parents=True, exist_ok=True)
         self._temp_dir.mkdir(parents=True, exist_ok=True)
@@ -36,6 +36,8 @@ class LocalStorageAdapter:
         return str(target_dir / filename)
 
     def create_temp_path(self, prefix: str, ext: str) -> str:
+        # Metemos el PID del proceso y bytes aleatorios para que dos hilos
+        # descargando al mismo tiempo no se pisen el mismo archivo temporal ni de casualidad.
         clean_ext = ext.lstrip(".")
         filename = f"{prefix}_{os.getpid()}_{os.urandom(4).hex()}.{clean_ext}"
         return str(self._temp_dir / filename)

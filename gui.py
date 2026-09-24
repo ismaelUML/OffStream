@@ -1,6 +1,6 @@
-"""Desktop Dashboard for YT Global DL.
-Built with CustomTkinter for a sleek, modern, user-friendly interface.
-"""
+# Panel de control de escritorio en CustomTkinter.
+# Para el que no quiere tocar una terminal en su vida ni abrir el navegador:
+# pega el link, elige si quiere video o audio, y ve la barrita avanzar.
 import os
 import subprocess
 import sys
@@ -13,6 +13,7 @@ import requests
 
 API_BASE = "http://127.0.0.1:8765"
 
+# Modo oscuro siempre. No queremos quemarle las retinas a nadie a las 3 de la mañana.
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
@@ -194,10 +195,12 @@ class YtGlobalDlApp(ctk.CTk):
             pass
 
     def _open_folder(self, folder_path: Path):
+        # Abre la carpeta directo en el explorador de Windows sin quejarse por espacios en la ruta
         folder_path.mkdir(parents=True, exist_ok=True)
         os.startfile(str(folder_path))
 
     def _start_daemon_process(self):
+        # Levantamos el daemon con CREATE_NO_WINDOW (0x08000000) para que no parpadee una consola negra
         main_script = str(Path(__file__).parent / "main.py")
         subprocess.Popen(
             [sys.executable, main_script],
@@ -206,6 +209,7 @@ class YtGlobalDlApp(ctk.CTk):
         )
 
     def _stop_daemon_process(self):
+        # Buscamos a quemarropa el PID que tenga secuestrado el puerto 8765 y lo matamos
         cmd = "$conn = Get-NetTCPConnection -LocalPort 8765 -ErrorAction SilentlyContinue; if ($conn) { foreach ($c in $conn) { Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue } }"
         subprocess.run(["powershell", "-NoProfile", "-Command", cmd], creationflags=0x08000000)
 
@@ -222,7 +226,6 @@ class YtGlobalDlApp(ctk.CTk):
 
     def _setup_autostart(self):
         subprocess.run(["cmd", "/c", "install_autostart.bat"], cwd=str(Path(__file__).parent))
-
 
     def _check_daemon_health(self) -> bool:
         try:
@@ -243,6 +246,7 @@ class YtGlobalDlApp(ctk.CTk):
         except Exception:
             pass
         finally:
+            # Usamos .after() en vez de time.sleep() para no congelar el loop de la interfaz
             self.after(1500, self._poll_status_cycle)
 
 
@@ -268,11 +272,10 @@ class YtGlobalDlApp(ctk.CTk):
         else:
             kind, quality = "video", "best"
 
-        # If daemon is offline, start it silently
+        # Si el usuario hace click y el daemon estaba apagado, lo prendemos de prepo
         if not self._check_daemon_health():
             self._start_daemon_process()
             time.sleep(1.2)
-
 
         try:
             res = requests.post(
@@ -284,6 +287,7 @@ class YtGlobalDlApp(ctk.CTk):
                 job_data = res.json()
                 self._active_job_id = job_data["job_id"]
                 self.progress_label.configure(text=f"Queueing Job #{self._active_job_id}...", text_color="#a78bfa")
+                # Deshabilitamos el botón para que no spameen clicks mientras baja
                 self.download_btn.configure(state="disabled")
             else:
                 self.progress_label.configure(text=f"Error: {res.text}", text_color="#f87171")
@@ -310,6 +314,7 @@ class YtGlobalDlApp(ctk.CTk):
                     text_color="#34d399",
                 )
                 self._active_job_id = None
+                # Reactivamos el botón para la próxima descarga
                 self.download_btn.configure(state="normal")
             elif status == "failed":
                 self.progress_label.configure(

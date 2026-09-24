@@ -1,7 +1,6 @@
-"""Download Manager orchestrating use cases.
-Governed by Little's Law (L = lambda * W) for bounded concurrency.
-Adheres strictly to SOLID and Dependency Inversion Principle.
-"""
+# El cerebro de las descargas. Si dejáramos que el usuario encole 50 videos a la vez,
+# FFmpeg y Python le prenderían fuego el procesador.
+# Limitamos los workers en paralelo y coordinamos la resolución, descarga y unión final.
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
@@ -24,15 +23,13 @@ from .stream_selector import select_best_audio_stream, select_video_stream
 
 
 class DownloadManager(DownloadUseCasePort):
-    """Core domain service managing the download queue and workers."""
-
     def __init__(
         self,
         resolver: StreamResolverPort,
         downloader: MediaDownloaderPort,
         processor: MediaProcessorPort,
         storage: StoragePort,
-        max_workers: int = 3,
+        max_workers: int = 3,  # 3 descargas simultáneas es el punto dulce antes de asfixiar la red y el disco
         max_queue_size: int = 25,
     ) -> None:
         self._resolver = resolver
@@ -95,6 +92,8 @@ class DownloadManager(DownloadUseCasePort):
 
     def _process_audio_pipeline(self, job: DownloadJob, metadata: VideoMetadata) -> str:
         dest_path = self._storage.get_output_path(f"{metadata.clean_title}.mp3", is_audio=True)
+        # Si el downloader tiene la ruta rápida acelerada directa, la usamos de cabeza.
+        # Nos ahorra tener que bajar el archivo temporal a mano y llamar a ffmpeg por separado.
         if hasattr(self._downloader, "download_direct"):
             return self._downloader.download_direct(
                 job.source_url,
@@ -114,10 +113,12 @@ class DownloadManager(DownloadUseCasePort):
             job.status = JobStatus.MUXING
             return self._processor.convert_to_mp3(temp_audio, dest_path)
         finally:
+            # Limpiamos el archivo temporal sí o sí; nadie quiere gigabytes de basura huérfana.
             self._storage.remove_files([temp_audio])
 
     def _process_video_pipeline(self, job: DownloadJob, metadata: VideoMetadata) -> str:
         dest_path = self._storage.get_output_path(f"{metadata.clean_title}.mp4", is_audio=False)
+        # Mismo caso: la ruta rápida directa descarga fragments paralelos y une con ffmpeg en 2 segundos.
         if hasattr(self._downloader, "download_direct"):
             return self._downloader.download_direct(
                 job.source_url,
@@ -127,6 +128,7 @@ class DownloadManager(DownloadUseCasePort):
                 progress_callback=job.update_progress,
             )
 
+        # Plan B de respaldo: bajamos la mejor pista de video y la mejor pista de audio por separado
         video_stream = select_video_stream(metadata.formats, job.target_quality)
         audio_stream = select_best_audio_stream(metadata.formats)
         temp_video = self._storage.create_temp_path(f"video_{job.job_id}", video_stream.extension)
@@ -145,5 +147,6 @@ class DownloadManager(DownloadUseCasePort):
             job.status = JobStatus.MUXING
             return self._processor.mux_video_audio(temp_video, temp_audio, dest_path)
         finally:
+            # Borramos los dos pedazos temporales para no dejar el disco C tapado de mugre
             self._storage.remove_files([temp_video, temp_audio])
 
