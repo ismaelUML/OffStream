@@ -1,6 +1,5 @@
-"""FastAPI Server Driving Adapter.
-Provides a local REST API for browser extensions and external integrations.
-"""
+# Servidor local FastAPI: el único puente entre la extensión del navegador y Python.
+# Si este proceso se muere o no arranca, la extensión de Chrome queda sorda y muda.
 import os
 import sys
 from typing import List, Optional
@@ -10,7 +9,9 @@ from pydantic import BaseModel, Field
 from domain.models import MediaKind, QualityTarget
 from .cli import build_default_manager
 
-# Ensure windowless Python (pythonw.exe) has valid write streams
+# Si arrancamos con pythonw.exe en segundo plano, Windows deja sys.stdout y stderr como None.
+# Si uvicorn o cualquier print intenta escupir algo sin esto, explota con un AttributeError ridículo.
+# Mandamos todo al hoyo negro de devnull para que no rompa las pelotas en silencio.
 if sys.stdout is None:
     sys.stdout = open(os.devnull, "w")
 if sys.stderr is None:
@@ -23,7 +24,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Enable CORS for Chrome and Firefox extensions
+# Permitimos cualquier origen porque la extensión corre con su propio chrome-extension://
+# y no queremos estar persiguiendo IDs dinámicos de Chrome un viernes a la tarde.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -132,7 +134,9 @@ def list_jobs():
 
 def start_server(host: str = "127.0.0.1", port: int = 8765):
     import uvicorn
-    # In windowless mode, pass log_config=None to avoid sys.stdout.isatty() crash
+    # Uvicorn asume con optimismo que siempre hay una terminal conectada.
+    # En modo daemon silencioso (pythonw), llamar a isatty() sobre None revienta todo el proceso.
+    # Si no hay tty real, le apagamos su logging por defecto para que nos deje vivir en paz.
     has_tty = False
     try:
         has_tty = sys.stdout is not None and sys.stdout.isatty()

@@ -9,7 +9,8 @@ const btnDownloadAudio = document.getElementById("btn-download-audio");
 const btnRefresh = document.getElementById("btn-refresh");
 const jobsList = document.getElementById("jobs-list");
 
-// Automatically prefill current active YouTube tab URL
+// Si el usuario ya está viendo un video en la pestaña activa, le ahorramos
+// el embole de tener que copiar y pegar la URL a mano.
 chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
   if (tabs && tabs[0] && tabs[0].url) {
     const tabUrl = tabs[0].url;
@@ -21,6 +22,8 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
 
 async function checkHealth() {
   try {
+    // Timeout corto de 1.2s: si el daemon local no responde al toque,
+    // es porque está apagado; no dejemos la UI clavada esperando.
     const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(1200) });
     if (res.ok) {
       statusPill.className = "status-pill online";
@@ -28,7 +31,7 @@ async function checkHealth() {
       return true;
     }
   } catch {
-    // Daemon offline
+    // Daemon apagado o muerto en segundo plano.
   }
   statusPill.className = "status-pill offline";
   statusText.textContent = "Offline";
@@ -105,7 +108,8 @@ async function refreshJobs() {
   }
 }
 
-// Polling interval for UI
+// Polling cada 2 segundos. No es WebSockets ni magia reactiva, pero para
+// ver la barrita de progreso de una descarga local alcanza y sobra sin comer CPU.
 checkHealth().then(refreshJobs);
 setInterval(() => {
   checkHealth();

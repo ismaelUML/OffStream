@@ -1,8 +1,7 @@
-"""Resilient Resolver Router with Fallback.
-Implements Open/Closed Principle and Liskov Substitution Principle:
-Accepts a sequence of StreamResolverPort implementations and degrades gracefully.
-Cyclomatic Complexity target: M <= 6.
-"""
+# YouTube cambia firmas, ciphers y endpoints cada dos semanas para romper descargadores.
+# Si dependemos de un solo motor, tarde o temprano el usuario se come un error 500 en la cara.
+# Esta clase encadena resolvers: si el principal se estampa contra una pared de YouTube,
+# pasamos al plan B sin hacer preguntas ni molestar al usuario.
 import logging
 from typing import List
 from domain.exceptions import ResolutionError
@@ -13,15 +12,12 @@ logger = logging.getLogger(__name__)
 
 
 class ResilientStreamResolver:
-    """Dispatches resolution across primary and secondary adapters."""
-
     def __init__(self, resolvers: List[StreamResolverPort]) -> None:
         if not resolvers:
-            raise ValueError("At least one StreamResolverPort must be supplied.")
+            raise ValueError("Necesitamos al menos un resolver o no hay forma de hablar con YouTube.")
         self._resolvers = resolvers
 
     def resolve(self, url_or_id: str) -> VideoMetadata:
-        """Attempt resolution sequentially until one succeeds."""
         errors: List[str] = []
 
         for resolver in self._resolvers:

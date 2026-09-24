@@ -1,8 +1,7 @@
-"""High-Speed Media Downloader Adapter.
-Implements MediaDownloaderPort using yt-dlp native parallel chunk engine
-with bundled FFmpeg location to bypass YouTube CDN bitrate throttling.
-Complexity target: M <= 5.
-"""
+# Si intentas bajar el stream directo de googlevideo con un simple requests.get(),
+# Google te estrangula la conexión a 50 KB/s para que el video tarde una eternidad.
+# Esta clase usa el motor interno de yt-dlp con 4 fragmentos paralelos y el ffmpeg
+# embebido para que baje a la velocidad real de tu conexión (~2 segundos).
 from typing import Any, Dict, Optional
 from domain.exceptions import StreamNotFoundError
 from domain.models import QualityTarget, StreamFormat
@@ -10,6 +9,8 @@ from ports.out_bound import MediaDownloaderPort, ProgressCallback
 
 try:
     import imageio_ffmpeg
+    # Usamos el binario de FFmpeg que viene con imageio para no obligar al usuario
+    # a renegar agregando ffmpeg al PATH de Windows a mano.
     _BUNDLED_FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 except Exception:
     _BUNDLED_FFMPEG = None
@@ -21,7 +22,6 @@ except ImportError:
 
 
 class FastMediaDownloader(MediaDownloaderPort):
-    """Downloads media streams at unthrottled gigabit speeds."""
 
     def download_stream(
         self,
@@ -81,13 +81,16 @@ class FastMediaDownloader(MediaDownloaderPort):
         base_opts = self._build_opts(output_path, callback)
 
         if is_audio:
+            # YouTube no te da un MP3 masticado; te da opus o m4a crudo.
+            # Le pedimos el mejor flujo de audio y dejamos que FFmpeg haga la conversión sucia.
             base_opts["format"] = "bestaudio/best"
             base_opts["postprocessors"] = [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
                 "preferredquality": "192",
             }]
-            # yt-dlp appends .mp3 automatically when postprocessing
+            # yt-dlp insiste en agregarle su propia extensión tras el postproceso.
+            # Si dejamos el .mp3 en outtmpl, terminamos con "cancion.mp3.mp3". Nadie quiere eso.
             clean_out = output_path.replace(".mp3", "")
             base_opts["outtmpl"] = f"{clean_out}.%(ext)s"
         elif quality == QualityTarget.P720:
