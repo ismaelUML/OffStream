@@ -3,7 +3,7 @@ Implements StreamResolverPort.
 Connects directly to YouTube's internal InnerTube JSON endpoint to extract
 streaming data, bitrates, and direct stream URLs without external binaries.
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import requests
 from core.title_cleaner import clean_title
 from core.url_parser import extract_video_id
