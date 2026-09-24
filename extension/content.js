@@ -10,15 +10,22 @@ function initButtonInjection() {
     return;
   }
 
-  // Target YouTube's native action bar
+  // Try multiple modern YouTube insertion points (subscribe button is most reliable)
+  const subscribeBtn =
+    document.querySelector("#owner #subscribe-button") ||
+    document.querySelector("#subscribe-button") ||
+    document.querySelector("ytd-subscribe-button-renderer");
+
   const targetBar =
     document.querySelector("#top-level-buttons-computed") ||
     document.querySelector("#actions-inner #menu") ||
-    document.querySelector(".ytd-watch-metadata #actions");
+    document.querySelector(".ytd-watch-metadata #actions") ||
+    document.querySelector("#actions.ytd-watch-metadata");
 
-  if (!targetBar) {
+  if (!subscribeBtn && !targetBar) {
     return;
   }
+
 
   const container = document.createElement("div");
   container.id = "yt-gdl-btn-container";
@@ -54,7 +61,12 @@ function initButtonInjection() {
     </div>
   `;
 
-  targetBar.appendChild(container);
+  if (subscribeBtn && subscribeBtn.parentElement) {
+    subscribeBtn.parentElement.insertBefore(container, subscribeBtn.nextSibling);
+  } else if (targetBar) {
+    targetBar.appendChild(container);
+  }
+
 
   const trigger = container.querySelector("#yt-gdl-trigger");
   const menu = container.querySelector("#yt-gdl-menu");
