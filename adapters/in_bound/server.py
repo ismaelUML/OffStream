@@ -1,12 +1,21 @@
 """FastAPI Server Driving Adapter.
 Provides a local REST API for browser extensions and external integrations.
 """
+import os
+import sys
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from domain.models import MediaKind, QualityTarget
 from .cli import build_default_manager
+
+# Ensure windowless Python (pythonw.exe) has valid write streams
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
+
 
 app = FastAPI(
     title="yt-global-dl Local Companion Daemon",
@@ -123,7 +132,16 @@ def list_jobs():
 
 def start_server(host: str = "127.0.0.1", port: int = 8765):
     import uvicorn
-    uvicorn.run(app, host=host, port=port)
+    # In windowless mode, pass log_config=None to avoid sys.stdout.isatty() crash
+    has_tty = False
+    try:
+        has_tty = sys.stdout is not None and sys.stdout.isatty()
+    except Exception:
+        has_tty = False
+
+    log_config = uvicorn.config.LOGGING_CONFIG if has_tty else None
+    uvicorn.run(app, host=host, port=port, log_config=log_config)
+
 
 
 if __name__ == "__main__":

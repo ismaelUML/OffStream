@@ -3,11 +3,13 @@ Built with CustomTkinter for a sleek, modern, user-friendly interface.
 """
 import os
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
 import customtkinter as ctk
 import requests
+
 
 API_BASE = "http://127.0.0.1:8765"
 
@@ -195,18 +197,32 @@ class YtGlobalDlApp(ctk.CTk):
         folder_path.mkdir(parents=True, exist_ok=True)
         os.startfile(str(folder_path))
 
+    def _start_daemon_process(self):
+        main_script = str(Path(__file__).parent / "main.py")
+        subprocess.Popen(
+            [sys.executable, main_script],
+            cwd=str(Path(__file__).parent),
+            creationflags=0x08000000,
+        )
+
+    def _stop_daemon_process(self):
+        cmd = "$conn = Get-NetTCPConnection -LocalPort 8765 -ErrorAction SilentlyContinue; if ($conn) { foreach ($c in $conn) { Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue } }"
+        subprocess.run(["powershell", "-NoProfile", "-Command", cmd], creationflags=0x08000000)
+
     def _toggle_daemon(self):
         is_online = self._check_daemon_health()
         if is_online:
-            subprocess.run(["cmd", "/c", "stop_daemon.bat"], creationflags=0x08000000)
+            self._stop_daemon_process()
+            time.sleep(0.5)
             self._update_status(False)
         else:
-            subprocess.Popen(["wscript.exe", "start_silent.vbs"], creationflags=0x08000000)
-            time.sleep(1.0)
+            self._start_daemon_process()
+            time.sleep(1.2)
             self._update_status(self._check_daemon_health())
 
     def _setup_autostart(self):
-        subprocess.run(["cmd", "/c", "install_autostart.bat"])
+        subprocess.run(["cmd", "/c", "install_autostart.bat"], cwd=str(Path(__file__).parent))
+
 
     def _check_daemon_health(self) -> bool:
         try:
@@ -216,16 +232,19 @@ class YtGlobalDlApp(ctk.CTk):
             return False
 
     def _start_status_poller(self):
-        def loop():
-            while True:
-                online = self._check_daemon_health()
-                self._update_status(online)
-                if self._active_job_id:
-                    self._poll_active_job()
-                time.sleep(1.5)
+        self._poll_status_cycle()
 
-        thread = threading.Thread(target=loop, daemon=True)
-        thread.start()
+    def _poll_status_cycle(self):
+        try:
+            online = self._check_daemon_health()
+            self._update_status(online)
+            if self._active_job_id:
+                self._poll_active_job()
+        except Exception:
+            pass
+        finally:
+            self.after(1500, self._poll_status_cycle)
+
 
     def _update_status(self, is_online: bool):
         if is_online:
@@ -251,8 +270,9 @@ class YtGlobalDlApp(ctk.CTk):
 
         # If daemon is offline, start it silently
         if not self._check_daemon_health():
-            subprocess.Popen(["wscript.exe", "start_silent.vbs"], creationflags=0x08000000)
+            self._start_daemon_process()
             time.sleep(1.2)
+
 
         try:
             res = requests.post(

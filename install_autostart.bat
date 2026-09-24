@@ -6,4 +6,4 @@ powershell -NoProfile -Command "$ws = New-Object -ComObject WScript.Shell; $sFol
 
 echo.
 echo The daemon will now automatically run silently in the background when Windows boots.
-timeout /t 3 >nul
+ping 127.0.0.1 -n 3 >nul
