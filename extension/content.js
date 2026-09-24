@@ -5,7 +5,7 @@
 
 const DAEMON_URL = "http://127.0.0.1:8765";
 
-console.log("%c[YT Global DL] Extension loaded and monitoring YouTube pages", "color: #a78bfa; font-weight: bold;");
+console.log("%c[YT Global DL] Extension script initialized.", "color: #a78bfa; font-size: 14px; font-weight: bold;");
 
 function isWatchPage() {
   return window.location.pathname === "/watch" || window.location.pathname.startsWith("/shorts");
@@ -21,21 +21,27 @@ function initButtonInjection() {
     return;
   }
 
-  // Target multiple modern YouTube insertion points (subscribe button is most reliable)
-  const subscribeBtn =
-    document.querySelector("#owner #subscribe-button") ||
-    document.querySelector("#subscribe-button") ||
-    document.querySelector("ytd-subscribe-button-renderer");
+  // 1. Look for #top-row (the container holding #owner and #actions)
+  const topRow =
+    document.querySelector("#top-row.ytd-watch-metadata") ||
+    document.querySelector("#top-row") ||
+    document.querySelector("ytd-watch-metadata #top-row");
 
-  const ownerContainer = document.querySelector("#owner") || document.querySelector("ytd-video-owner-renderer");
+  const actions =
+    document.querySelector("#actions.ytd-watch-metadata") ||
+    document.querySelector("#actions") ||
+    document.querySelector("#actions-inner");
 
-  const targetBar =
-    document.querySelector("#top-level-buttons-computed") ||
-    document.querySelector("#actions-inner #menu") ||
-    document.querySelector(".ytd-watch-metadata #actions") ||
-    document.querySelector("#actions.ytd-watch-metadata");
+  const owner =
+    document.querySelector("#owner.ytd-watch-metadata") ||
+    document.querySelector("#owner") ||
+    document.querySelector("ytd-video-owner-renderer");
 
-  if (!subscribeBtn && !ownerContainer && !targetBar) {
+  const subBtn =
+    document.querySelector("ytd-subscribe-button-renderer") ||
+    document.querySelector("#subscribe-button");
+
+  if (!topRow && !actions && !owner && !subBtn) {
     return;
   }
 
@@ -44,7 +50,7 @@ function initButtonInjection() {
   container.className = "yt-gdl-btn-container";
 
   container.innerHTML = `
-    <button class="yt-gdl-main-btn" id="yt-gdl-trigger">
+    <button class="yt-gdl-main-btn" id="yt-gdl-trigger" title="Download this video or audio">
       <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/></svg>
       <span>Download</span>
     </button>
@@ -73,16 +79,23 @@ function initButtonInjection() {
     </div>
   `;
 
-  // Insert next to subscribe button or owner
-  if (subscribeBtn && subscribeBtn.parentElement) {
-    subscribeBtn.parentElement.insertBefore(container, subscribeBtn.nextSibling);
-    console.log("[YT Global DL] Download button injected next to Subscribe button!");
-  } else if (ownerContainer) {
-    ownerContainer.appendChild(container);
-    console.log("[YT Global DL] Download button injected inside Owner container!");
-  } else if (targetBar) {
-    targetBar.appendChild(container);
-    console.log("[YT Global DL] Download button injected inside Actions bar!");
+  // Placement priority:
+  // Priority 1: In #top-row between #owner and #actions (The large empty gap!)
+  if (topRow && actions && actions.parentElement === topRow) {
+    topRow.insertBefore(container, actions);
+    console.log("[YT Global DL] Injected in #top-row before #actions.");
+  } else if (actions && actions.parentElement) {
+    actions.parentElement.insertBefore(container, actions);
+    console.log("[YT Global DL] Injected before #actions.");
+  } else if (owner && owner.parentElement) {
+    owner.parentElement.insertBefore(container, owner.nextSibling);
+    console.log("[YT Global DL] Injected after #owner.");
+  } else if (subBtn && subBtn.parentElement) {
+    subBtn.parentElement.insertBefore(container, subBtn.nextSibling);
+    console.log("[YT Global DL] Injected next to subscribe button.");
+  } else if (actions) {
+    actions.prepend(container);
+    console.log("[YT Global DL] Prepended to #actions.");
   }
 
   const trigger = container.querySelector("#yt-gdl-trigger");
@@ -151,7 +164,7 @@ function pollJobProgress(jobId) {
     } catch {
       clearInterval(interval);
     }
-  }, 500);
+  }, 400);
 }
 
 let activeToastTimeout = null;
@@ -190,18 +203,22 @@ function showToast(message, progressPct = 0, isError = false) {
 }
 
 // Watch for YouTube SPA navigation changes
-const observer = new MutationObserver(() => initButtonInjection());
+const observer = new MutationObserver(() => {
+  if (isWatchPage()) {
+    initButtonInjection();
+  }
+});
 observer.observe(document.body, { childList: true, subtree: true });
 
 window.addEventListener("yt-navigate-finish", initButtonInjection);
 window.addEventListener("yt-page-data-updated", initButtonInjection);
 window.addEventListener("spfdone", initButtonInjection);
 
-// Regular periodic heartbeat to re-check injection
+// Interval heartbeat retry
 setInterval(() => {
   if (isWatchPage()) {
     initButtonInjection();
   }
-}, 1000);
+}, 800);
 
 initButtonInjection();
