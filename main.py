@@ -6,12 +6,13 @@ import sys
 from adapters.in_bound.cli import run_cli
 from adapters.in_bound.server import start_server
 
+# Cuando Windows ejecuta mediante pythonw.exe (modo background sin consola),
+# asigna sys.stdout y sys.stderr como None. Cualquier llamada inocente a print() o
+# log de librerías lanzaría un AttributeError silencioso y mataría el proceso sin dejar rastro.
 if sys.stdout is None:
     sys.stdout = open(os.devnull, "w")
 if sys.stderr is None:
     sys.stderr = open(os.devnull, "w")
-
-
 
 import traceback
 

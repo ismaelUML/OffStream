@@ -176,6 +176,9 @@ async def stream_events():
                     event = await asyncio.to_thread(q.get, timeout=15.0)
                     yield f"data: {json.dumps(event)}\n\n"
                 except Exception:
+                    # En la spec W3C de SSE, las líneas que empiezan con ':' son comentarios.
+                    # No disparan 'onmessage' en el navegador, pero mantienen el socket TCP
+                    # caliente para que los routers/proxies no cierren la conexión por inactividad.
                     yield ": heartbeat\n\n"
         except asyncio.CancelledError:
             pass

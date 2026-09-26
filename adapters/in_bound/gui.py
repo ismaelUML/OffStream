@@ -418,11 +418,15 @@ class YtGlobalDlApp(ctk.CTk):
         ).pack(side="right", padx=(4, 0))
 
     def _play_file(self, file_path: str):
+        # os.startfile invoca la asociación nativa de Windows (ej: VLC, Media Player)
+        # sin necesidad de lidiar con rutas absolutas de reproductores ni subprocesos.
         p = Path(file_path)
         if p.is_file():
             os.startfile(str(p))
 
     def _reveal_file(self, file_path: str):
+        # El parámetro /select le indica a explorer.exe que no solo abra la carpeta,
+        # sino que deje el archivo resaltado en azul para que el usuario no tenga que buscarlo.
         p = Path(file_path)
         if p.is_file():
             subprocess.run(["explorer", f"/select,{str(p)}"])
@@ -448,19 +452,28 @@ class YtGlobalDlApp(ctk.CTk):
         os.startfile(str(folder_path))
 
     def _start_daemon_process(self):
-        main_script = str(Path(__file__).parent / "main.py")
+        # El flag 0x08000000 (CREATE_NO_WINDOW) es indispensable en Windows para
+        # levantar el daemon secundario sin que parpadee una consola CMD negra en la pantalla.
+        repo_root = Path(__file__).resolve().parents[2]
+        main_script = str(repo_root / "main.py")
         subprocess.Popen(
             [sys.executable, main_script],
-            cwd=str(Path(__file__).parent),
+            cwd=str(repo_root),
             creationflags=0x08000000,
         )
 
     def _stop_daemon_process(self):
+        # En lugar de matar "python.exe" a ciegas (que podría liquidar otros procesos
+        # o servidores de desarrollo del usuario), rastreamos el socket en el puerto 8765
+        # y matamos únicamente el árbol de procesos de ese PID específico.
         cmd = "$conn = Get-NetTCPConnection -LocalPort 8765 -ErrorAction SilentlyContinue; if ($conn) { foreach ($c in $conn) { taskkill.exe /F /T /PID $c.OwningProcess 2>$null } }"
         subprocess.run(["powershell", "-NoProfile", "-Command", cmd], creationflags=0x08000000)
 
     def _toggle_daemon(self):
         def _do_toggle():
+            # Corremos en un thread separado para que los time.sleep() no congelen la ventana.
+            # Regla de oro de Tkinter: NUNCA tocar widgets desde este hilo;
+            # delegamos las mutaciones visuales al loop de la UI mediante self.after(0, ...).
             is_online = self._check_daemon_health()
             if is_online:
                 self._stop_daemon_process()
@@ -475,7 +488,9 @@ class YtGlobalDlApp(ctk.CTk):
         threading.Thread(target=_do_toggle, daemon=True).start()
 
     def _setup_autostart(self):
-        subprocess.run(["cmd", "/c", "install_autostart.bat"], cwd=str(Path(__file__).parent))
+        repo_root = Path(__file__).resolve().parents[2]
+        bat_script = str(repo_root / "scripts" / "windows" / "install_autostart.bat")
+        subprocess.run(["cmd", "/c", bat_script], cwd=str(repo_root))
 
     def _check_daemon_health(self) -> bool:
         try:
@@ -524,6 +539,8 @@ class YtGlobalDlApp(ctk.CTk):
         self.url_entry.delete(0, "end")
 
         def _do_submit():
+            # Si el daemon no está corriendo, lo arrancamos al vuelo de forma transparente
+            # para que el usuario no tenga que ir a prender nada antes de encolar una descarga.
             if not self._check_daemon_health():
                 self._start_daemon_process()
                 time.sleep(1.2)
