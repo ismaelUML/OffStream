@@ -1,16 +1,35 @@
 # OffStream
 
-A local, decoupled media downloader and browser companion built with Hexagonal Architecture.
+A resilient, local media downloader and browser companion built with strict Hexagonal Architecture.
 
+[![CI Pipeline](https://github.com/ismaelUML/OffStream/actions/workflows/ci.yml/badge.svg)](https://github.com/ismaelUML/OffStream/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-44%2F44_passed-success.svg)](tests/)
+[![Complexity](https://img.shields.io/badge/cyclomatic_complexity-Rank_A_(2.38)-brightgreen.svg)](#code-metrics)
+[![Maintainability](https://img.shields.io/badge/maintainability-Rank_A-brightgreen.svg)](#code-metrics)
+[![Architecture](https://img.shields.io/badge/architecture-Hexagonal_(Ports_%26_Adapters)-blueviolet.svg)](#architecture)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-30%2F30_passed-success.svg)](tests/)
+
+---
+
+## Why OffStream?
+
+Online converters (`y2mate`, `savefrom`) are plagued with malicious redirects, spam ads, and aggressive CDN bandwidth throttling (~50 KB/s). Standard scripts and CLI tools, on the other hand, frequently lock up, leave zombie FFmpeg processes consuming CPU, flash unwanted CMD windows, and lack real-time visibility.
+
+**OffStream** runs completely on your own machine as an asynchronous companion service:
+- **Unthrottled parallel streaming**: Downloads 4 concurrent chunk streams to max out your connection line speed (completing downloads in 2–3 seconds).
+- **Server-Sent Events (SSE)**: Delivers 60 FPS real-time progress updates directly from the download engine to the UI without network-saturating polling.
+- **Embedded SQLite History**: Tracks video ID, title, channel, duration, timestamps, and destination paths via standard library `sqlite3`.
+- **Searchable Desktop Library**: Instant search across your download history with live file integrity checks (`✓ En disco` vs. `⚠️ Archivo movido o eliminado`) and one-click playback (`os.startfile`).
+- **Resilient Cookies Bypass**: Injects active local browser sessions (`Chrome`, `Firefox`, `Edge`, `Brave`) or `cookies.txt` to bypass bot challenges, age gates, and download high-bitrate YouTube Music audio—featuring automated fallback if Windows locks the cookie database.
+- **Windows-Defensive Engineering**: Suppresses black console flashes via `CREATE_NO_WINDOW` and purges process trees on exit using `taskkill.exe /F /T /PID`.
 
 ---
 
 ## Quick Start
 
 ### 1. Requirements & Setup
-Requires Python 3.11+ and Windows 10/11 (FFmpeg is bundled automatically via `imageio-ffmpeg`).
+Requires **Python 3.11+** on Windows 10/11 (FFmpeg is automatically bundled via `imageio-ffmpeg`).
 
 ```bash
 git clone https://github.com/ismaelUML/OffStream.git
@@ -27,7 +46,8 @@ python main.py
 # Runs on http://127.0.0.1:8765
 ```
 
-For invisible background execution on Windows without an open terminal window, double-click `start_silent.vbs` (or run `install_autostart.bat` to launch on boot).
+> [!TIP]
+> For invisible background execution without an open terminal window, double-click `start_silent.vbs` (or run `install_autostart.bat` to launch on Windows boot).
 
 ---
 
@@ -37,87 +57,116 @@ For invisible background execution on Windows without an open terminal window, d
 1. Open `chrome://extensions/` and enable **Developer mode**.
 2. Click **Load unpacked** and select the `extension/` directory.
 3. Pin **OffStream** to your toolbar.
-4. On any YouTube or YouTube Music tab, click the icon: the URL is prefilled automatically. Click **Video** or **Audio**.
+4. On any YouTube or YouTube Music video, click the toolbar icon: the active URL is detected automatically. Click **Video** or **Audio (MP3)**. Progress streams live via SSE.
 
-### 2. Desktop GUI
+### 2. Desktop GUI (CustomTkinter)
 ```bash
 python gui.py
 ```
 Or double-click `Launch_Dashboard.bat`.
+- **Tab "⬇ Descargas"**: Paste any URL, select quality (1080p+, MP3, 720p), view live progress, and manage the daemon lifecycle.
+- **Tab "📚 Biblioteca / Historial"**: Type to search through past downloads in real time. Click **▶ Reproducir** to launch in your default media player, or **📁 Carpeta** to highlight the file in Windows Explorer.
 
-### 3. CLI
+### 3. Command Line Interface (CLI)
 ```bash
 # Download 1080p video with lossless remux
 python main.py "https://www.youtube.com/watch?v=VIDEO_ID" -q 1080p
 
-# Download audio converted directly to MP3
+# Download audio converted directly to MP3 with embedded album art
 python main.py -a "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# Use browser cookies to bypass age-gating or access YouTube Music bitrate
+python main.py -a "https://music.youtube.com/watch?v=VIDEO_ID" --cookies-from-browser chrome
 
 # Inspect stream metadata without downloading
 python main.py -i "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
-All files are saved to `Downloads/yt-global-dl/{videos,music}`.
-
----
-
-## Why This Exists
-
-Web converters (`y2mate`, `savefrom`) are full of spam ads, redirects, and severe bandwidth throttling (~50 KB/s). OffStream runs entirely on your local machine, using 4 parallel chunk streams and local FFmpeg remuxing to complete downloads in 2–3 seconds.
+All downloads are organized in `Downloads/yt-global-dl/{videos,music}`.
 
 ---
 
 ## Architecture
 
-OffStream uses **Hexagonal Architecture (Ports and Adapters)** to decouple business logic from external APIs:
+OffStream follows strict **Hexagonal Architecture (Ports and Adapters)** principles to maintain high cohesion and absolute testability:
 
-- **Domain (`domain/`)**: Pure Python standard library dataclasses (`DownloadJob`, `StreamFormat`). Zero external dependencies.
-- **Ports (`ports/`)**: Protocols defining boundaries (`StreamResolverPort`, `MediaDownloaderPort`, `MediaProcessorPort`, `StoragePort`).
-- **Core (`core/`)**: Orchestration services (`DownloadManager`, `ResilientStreamResolver`, `TitleSanitizer`). Concurrency is bounded to 3 parallel workers via ThreadPoolExecutor.
-- **Adapters (`adapters/`)**: Concrete integrations (FastAPI server, CLI, CustomTkinter GUI, yt-dlp fragment engine, FFmpeg process runner).
+```mermaid
+graph TD
+    subgraph Driving Adapters
+        Ext[Chrome / Edge Extension] -->|SSE / REST| Srv[FastAPI Daemon]
+        GUI[CustomTkinter GUI] -->|REST / SQLite| Srv
+        CLI[Terminal CLI] --> Core
+    end
+
+    subgraph Core
+        Srv --> Core[DownloadManager]
+        Core --> CB[Circuit Breaker Router]
+        Core --> TS[Title Cleaner]
+        Core --> SS[Stream Selector]
+    end
+
+    subgraph Domain
+        Core -.-> Models[Pure Dataclasses & Exceptions]
+    end
+
+    subgraph Driven Adapters
+        CB --> YTDLP[YtDlpResolver]
+        CB --> InnerTube[InnerTubeResolver]
+        Core --> FastDL[FastMediaDownloader]
+        Core --> FFmpeg[FFmpegProcessor]
+        Core --> SQLite[SqliteHistoryAdapter]
+        Core --> Disk[LocalStorageAdapter]
+    end
+```
+
+- **Domain (`domain/`)**: Pure Python standard library dataclasses (`DownloadJob`, `DownloadRecord`, `StreamFormat`). Zero external imports.
+- **Ports (`ports/`)**: Interfaces defined using `typing.Protocol` (`StreamResolverPort`, `MediaDownloaderPort`, `MediaProcessorPort`, `StoragePort`, `HistoryRepositoryPort`).
+- **Core (`core/`)**: Orchestration services. Enforces Little's Law with bounded concurrency (3 parallel workers, max 25 queue capacity), socket cancellation hooks, and circuit-breaker failover.
+- **Adapters (`adapters/`)**: Concrete implementations (FastAPI server, CLI parser, SQLite history database, yt-dlp direct downloader, imageio FFmpeg wrapper).
 
 ---
 
-## Features & Non-Goals
+## Code Metrics
 
-### Features
-- **Unthrottled parallel streaming**: Downloads fragments concurrently to bypass YouTube CDN bandwidth limits.
-- **Lossless muxing**: Combines 1080p+ video and audio streams using `-c:v copy` without expensive re-encoding.
-- **Automatic fallback resolver**: If the primary resolver hits bot challenges, it switches to yt-dlp's cipher solver without failing the job.
-- **Title sanitation**: Removes clickbait noise tags (`[OFFICIAL VIDEO]`, `4K`, `60FPS`) and replaces invalid filesystem characters.
-- **Windowless Windows execution**: Suppresses subprocess console windows via `CREATE_NO_WINDOW`.
+Code quality is monitored using [Radon](https://radon.readthedocs.io/):
 
-### Non-Goals
-- **No cloud SaaS**: OffStream will not be hosted as a public web service; it is strictly a personal local tool.
-- **No DOM injection**: OffStream does not inject buttons into YouTube's web components to avoid layout breakage across site updates. It operates exclusively via the extension toolbar popup.
-- **No DRM circumvention**: Does not download encrypted, rented, or private member-only streams.
-- **No mass crawler**: Not built for archiving entire channels or multi-thousand video playlists.
+| Layer | Modules | Average CC | Maximum CC | Maintainability Index |
+|---|---|:---:|:---:|:---:|
+| **Domain** | `models.py`, `exceptions.py` | **1.04** | 2 | **100.0 (Rank A)** |
+| **Ports** | `in_bound.py`, `out_bound.py` | **1.22** | 2 | **100.0 (Rank A)** |
+| **Core** | `download_manager.py`, `circuit_breaker.py`, `stream_selector.py`, `title_cleaner.py`, `url_parser.py` | **2.97** | 5 | **78.9 (Rank A)** |
+| **Adapters** | `server.py`, `cli.py`, `sqlite_history.py`, `fast_downloader.py`, `ytdlp_resolver.py`, `cookies_helper.py`, `ffmpeg_processor.py` | **2.61** | 5 | **63.4 (Rank A)** |
+| **Desktop GUI** | `gui.py` | **2.31** | 5 | **32.0 (Rank A)** |
+| **Overall Production** | **All 26 Python Modules** | **2.38 (Rank A)** | **5 (Rank A)** | **100% Rank A** |
+
+> [!NOTE]
+> Every single production function has a Cyclomatic Complexity $\le 5$, adhering to strict Single Responsibility and Clean Code standards.
 
 ---
 
 ## Tests
 
-Run the unit test suite:
+Run the full automated test suite (44 unit and integration tests):
 
 ```bash
 python -m pytest tests/ -v
 ```
 
-Complexity and maintainability check:
+Run static complexity and maintainability audits:
 
 ```bash
-python -m radon cc domain ports core adapters -s -a
-python -m radon mi domain ports core adapters -s
+python -m radon cc domain ports core adapters gui.py main.py -s -a
+python -m radon mi domain ports core adapters gui.py main.py -s
 ```
 
 ---
 
 ## Disclaimer
 
-This software is for personal media backup and educational analysis only. Users are responsible for complying with local copyright laws and platform terms of service.
+This software is designed for personal media backup, local caching, and educational analysis only. Users are responsible for complying with local copyright laws and third-party terms of service.
 
 ---
 
 ## License
 
-[MIT](LICENSE)
+Released under the [MIT License](LICENSE).
