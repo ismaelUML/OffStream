@@ -18,6 +18,36 @@ ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 
+def _format_active_status(active_jobs: list) -> tuple:
+    latest = active_jobs[-1]
+    pct = latest.get("progress_percentage", 0.0)
+    status = latest.get("status", "pending")
+    return (
+        pct / 100.0,
+        f"[{status.upper()}] {pct:.0f}% ({len(active_jobs)} active in queue)",
+        "#60a5fa",
+    )
+
+
+def _format_idle_status(jobs: list, is_active_bar: bool) -> tuple:
+    if not is_active_bar:
+        return 0.0, "Ready for download", "#a1a1aa"
+    for j in reversed(jobs):
+        if j.get("status") == "failed":
+            return 1.0, f"✗ Last download failed: {j.get('error_message')}", "#f87171"
+        if j.get("status") == "completed":
+            break
+    return 1.0, "✓ Ready (All downloads finished)", "#34d399"
+
+
+def _compute_pipeline_display(jobs: list, is_active_bar: bool) -> tuple:
+    """Calcula el estado visual de la UI (progreso, texto, color) según los jobs del pipeline."""
+    active = [j for j in jobs if j.get("status") in ("pending", "resolving", "downloading", "muxing")]
+    if active:
+        return _format_active_status(active)
+    return _format_idle_status(jobs, is_active_bar)
+
+
 class YtGlobalDlApp(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -318,34 +348,9 @@ class YtGlobalDlApp(ctk.CTk):
                 return
 
             jobs = r.json()
-            active_jobs = [
-                j for j in jobs
-                if j.get("status") in ("pending", "resolving", "downloading", "muxing")
-            ]
-
-            if active_jobs:
-                # Monitoreamos la descarga activa más reciente y mostramos la cantidad en cola
-                latest = active_jobs[-1]
-                pct = latest.get("progress_percentage", 0.0)
-                status = latest.get("status", "pending")
-                self.progress_bar.set(pct / 100.0)
-                active_text = f"[{status.upper()}] {pct:.0f}% ({len(active_jobs)} active in queue)"
-                self.progress_label.configure(text=active_text, text_color="#60a5fa")
-            else:
-                completed = [j for j in jobs if j.get("status") == "completed"]
-                failed = [j for j in jobs if j.get("status") == "failed"]
-                if self.progress_bar.get() > 0:
-                    self.progress_bar.set(1.0)
-                    if failed and not completed:
-                        self.progress_label.configure(
-                            text=f"✗ Last download failed: {failed[-1].get('error_message')}",
-                            text_color="#f87171",
-                        )
-                    else:
-                        self.progress_label.configure(
-                            text="✓ Ready (All downloads finished)",
-                            text_color="#34d399",
-                        )
+            progress, text, color = _compute_pipeline_display(jobs, self.progress_bar.get() > 0)
+            self.progress_bar.set(progress)
+            self.progress_label.configure(text=text, text_color=color)
         except Exception:
             pass
 
