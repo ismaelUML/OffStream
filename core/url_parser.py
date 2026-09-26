@@ -8,7 +8,9 @@ from domain.exceptions import InvalidVideoURLError
 # YouTube usa exactamente 11 caracteres alfanuméricos (más guiones y guiones bajos).
 _YT_ID_REGEX = re.compile(r"^[a-zA-Z0-9_-]{11}$")
 _URL_PATTERNS = [
-    re.compile(r"(?:v=|\/v\/|embed\/|shorts\/)([a-zA-Z0-9_-]{11})"),
+    # YouTube no para de inventar rutas nuevas: /v/, /embed/, /shorts/ y ahora /live/ para directos y estrenos.
+    # Metemos /live/ acá o revienta con error 400 cuando pegan transmisiones o repeticiones de streaming.
+    re.compile(r"(?:v=|\/v\/|embed\/|shorts\/|live\/)([a-zA-Z0-9_-]{11})"),
     re.compile(r"youtu\.be\/([a-zA-Z0-9_-]{11})"),
 ]
 

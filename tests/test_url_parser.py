@@ -19,6 +19,11 @@ def test_extract_video_id_from_shorts():
     assert extract_video_id(url) == "dQw4w9WgXcQ"
 
 
+def test_extract_video_id_from_live():
+    url = "https://www.youtube.com/live/dQw4w9WgXcQ?feature=share"
+    assert extract_video_id(url) == "dQw4w9WgXcQ"
+
+
 def test_extract_video_id_direct_id():
     assert extract_video_id("dQw4w9WgXcQ") == "dQw4w9WgXcQ"
 
