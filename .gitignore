@@ -6,3 +6,7 @@ __pycache__/
 .DS_Store
 yt_global_dl_temp/
 downloads/
+*.part
+*.ytdl
+*.log
+

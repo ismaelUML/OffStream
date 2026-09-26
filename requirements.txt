@@ -14,3 +14,4 @@ customtkinter>=5.2.0
 # Testing & Quality Metrics
 pytest>=7.4.0
 radon>=6.0.1
+httpx>=0.24.0

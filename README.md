@@ -3,7 +3,7 @@
 A local, decoupled media downloader and browser companion built with Hexagonal Architecture.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-22%2F22_passed-success.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-26%2F26_passed-success.svg)](tests/)
 
 ---
 
