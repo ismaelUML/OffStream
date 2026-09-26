@@ -2,7 +2,7 @@
 Following Interface Segregation Principle (ISP) and Dependency Inversion Principle (DIP).
 """
 from typing import Callable, List, Optional, Protocol
-from domain.models import StreamFormat, VideoMetadata
+from domain.models import DownloadRecord, StreamFormat, VideoMetadata
 
 
 class StreamResolverPort(Protocol):
@@ -60,3 +60,24 @@ class StoragePort(Protocol):
     def remove_files(self, paths: List[str]) -> None:
         """Safely remove temporary working files."""
         ...
+
+
+class HistoryRepositoryPort(Protocol):
+    """Port for persisting and querying downloaded media history."""
+
+    def add_record(self, record: DownloadRecord) -> int:
+        """Insert a download record into storage. Returns record ID."""
+        ...
+
+    def list_records(self, limit: int = 100, query: Optional[str] = None) -> List[DownloadRecord]:
+        """Search and list historical download records."""
+        ...
+
+    def delete_record(self, record_id: int) -> bool:
+        """Delete a record by its identifier."""
+        ...
+
+    def clear_all(self) -> int:
+        """Clear all historical records."""
+        ...
+

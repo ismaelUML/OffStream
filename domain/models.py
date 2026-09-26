@@ -84,3 +84,16 @@ class DownloadJob:
         self.error_message = "Cancelled by user"
         self.completed_at = datetime.utcnow()
 
+
+@dataclass(frozen=True)
+class DownloadRecord:
+    id: Optional[int]
+    video_id: str
+    title: str
+    channel: str
+    duration_seconds: int
+    created_at: str
+    file_path: str
+    media_kind: str = "video"
+
+

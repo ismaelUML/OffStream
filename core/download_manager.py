@@ -1,13 +1,16 @@
 # El cerebro de las descargas. Si dejáramos que el usuario encole 50 videos a la vez,
 # FFmpeg y Python le prenderían fuego el procesador.
 # Limitamos los workers en paralelo y coordinamos la resolución, descarga y unión final.
+import queue
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 from domain.exceptions import JobCancelledError, QueueFullError
 from domain.models import (
     DownloadJob,
+    DownloadRecord,
     JobStatus,
     MediaKind,
     QualityTarget,
@@ -15,6 +18,7 @@ from domain.models import (
 )
 from ports.in_bound import DownloadUseCasePort
 from ports.out_bound import (
+    HistoryRepositoryPort,
     MediaDownloaderPort,
     MediaProcessorPort,
     StoragePort,
@@ -33,6 +37,7 @@ class DownloadManager(DownloadUseCasePort):
         max_workers: int = 3,  # 3 descargas simultáneas es el punto dulce antes de asfixiar la red y el disco
         max_queue_size: int = 25,
         max_history: int = 50,  # Evitamos que el daemon en segundo plano filtre memoria tras semanas de uso
+        history_repo: Optional[HistoryRepositoryPort] = None,
     ) -> None:
         self._resolver = resolver
         self._downloader = downloader
@@ -40,9 +45,47 @@ class DownloadManager(DownloadUseCasePort):
         self._storage = storage
         self._max_queue_size = max_queue_size
         self._max_history = max_history
+        self._history_repo = history_repo
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._jobs: Dict[str, DownloadJob] = {}
         self._lock = threading.Lock()
+        self._listeners: List[queue.Queue] = []
+        self._listeners_lock = threading.Lock()
+
+    def subscribe_events(self) -> queue.Queue:
+        """Permite a clientes SSE o WebSockets recibir actualizaciones en tiempo real a 60 FPS."""
+        q: queue.Queue = queue.Queue(maxsize=100)
+        with self._listeners_lock:
+            self._listeners.append(q)
+        return q
+
+    def unsubscribe_events(self, q: queue.Queue) -> None:
+        with self._listeners_lock:
+            if q in self._listeners:
+                self._listeners.remove(q)
+
+    def _broadcast_job_event(self, job: DownloadJob) -> None:
+        event_data = {
+            "type": "job_update",
+            "job_id": job.job_id,
+            "status": job.status.value,
+            "progress_percentage": job.progress_percentage,
+            "source_url": job.source_url,
+            "target_kind": job.target_kind.value,
+            "target_quality": job.target_quality.value,
+            "output_path": job.output_path,
+            "error_message": job.error_message,
+        }
+        with self._listeners_lock:
+            for q in list(self._listeners):
+                try:
+                    q.put_nowait(event_data)
+                except queue.Full:
+                    try:
+                        q.get_nowait()
+                        q.put_nowait(event_data)
+                    except Exception:
+                        pass
 
     def inspect_video(self, url: str) -> VideoMetadata:
         return self._resolver.resolve(url)
@@ -64,6 +107,7 @@ class DownloadManager(DownloadUseCasePort):
                 target_quality=quality,
             )
             self._jobs[job_id] = job
+        self._broadcast_job_event(job)
         self._executor.submit(self._run_job_lifecycle, job)
         return job
 
@@ -82,6 +126,7 @@ class DownloadManager(DownloadUseCasePort):
                 return False
             if job.status in (JobStatus.PENDING, JobStatus.RESOLVING, JobStatus.DOWNLOADING, JobStatus.MUXING):
                 job.mark_cancelled()
+                self._broadcast_job_event(job)
                 return True
             return False
 
@@ -94,6 +139,52 @@ class DownloadManager(DownloadUseCasePort):
             for jid in finished_ids:
                 del self._jobs[jid]
             return len(finished_ids)
+
+    def get_history(self, limit: int = 100, query: Optional[str] = None) -> List[DownloadRecord]:
+        if not self._history_repo:
+            return []
+        return self._history_repo.list_records(limit=limit, query=query)
+
+    def delete_history_record(self, record_id: int) -> bool:
+        if not self._history_repo:
+            return False
+        return self._history_repo.delete_record(record_id)
+
+    def clear_history(self) -> int:
+        if not self._history_repo:
+            return 0
+        return self._history_repo.clear_all()
+
+    def _set_job_status(self, job: DownloadJob, status: JobStatus) -> None:
+        job.status = status
+        self._broadcast_job_event(job)
+
+    def _update_job_progress(self, job: DownloadJob, pct: float) -> None:
+        job.update_progress(pct)
+        self._broadcast_job_event(job)
+
+    def _mark_job_completed(self, job: DownloadJob, path: str, metadata: Optional[VideoMetadata]) -> None:
+        job.mark_completed(path)
+        self._record_history(job, path, metadata)
+        self._broadcast_job_event(job)
+
+    def _record_history(self, job: DownloadJob, path: str, metadata: Optional[VideoMetadata]) -> None:
+        if not self._history_repo or not metadata:
+            return
+        try:
+            record = DownloadRecord(
+                id=None,
+                video_id=metadata.video_id,
+                title=metadata.clean_title,
+                channel=metadata.uploader,
+                duration_seconds=metadata.duration_seconds,
+                created_at=datetime.utcnow().isoformat(),
+                file_path=path,
+                media_kind=job.target_kind.value if hasattr(job.target_kind, "value") else str(job.target_kind),
+            )
+            self._history_repo.add_record(record)
+        except Exception:
+            pass
 
     def _check_queue_capacity(self) -> None:
         active_count = sum(
@@ -116,34 +207,36 @@ class DownloadManager(DownloadUseCasePort):
             for jid, _ in finished[:excess]:
                 del self._jobs[jid]
 
+    def _execute_download_pipeline(self, job: DownloadJob, metadata: VideoMetadata) -> str:
+        if job.target_kind == MediaKind.AUDIO:
+            return self._process_audio_pipeline(job, metadata)
+        return self._process_video_pipeline(job, metadata)
+
+    def _handle_lifecycle_error(self, job: DownloadJob, err: Exception) -> None:
+        if isinstance(err, JobCancelledError):
+            job.mark_cancelled()
+        elif job.status != JobStatus.CANCELLED:
+            job.mark_failed(str(err))
+        self._broadcast_job_event(job)
+
     def _run_job_lifecycle(self, job: DownloadJob) -> None:
         try:
             if job.status == JobStatus.CANCELLED:
                 return
 
-            job.status = JobStatus.RESOLVING
+            self._set_job_status(job, JobStatus.RESOLVING)
             metadata = self._resolver.resolve(job.source_url)
-
             if job.status == JobStatus.CANCELLED:
                 return
 
-            job.status = JobStatus.DOWNLOADING
-            if job.target_kind == MediaKind.AUDIO:
-                path = self._process_audio_pipeline(job, metadata)
-            else:
-                path = self._process_video_pipeline(job, metadata)
-
+            self._set_job_status(job, JobStatus.DOWNLOADING)
+            path = self._execute_download_pipeline(job, metadata)
             if job.status == JobStatus.CANCELLED:
                 return
 
-            job.mark_completed(path)
-        except JobCancelledError:
-            # Si el usuario apretó cancelar a mitad de descarga de bytes,
-            # nos aseguramos de que el job quede marcado como CANCELLED limpiamente
-            job.mark_cancelled()
+            self._mark_job_completed(job, path, metadata)
         except Exception as err:
-            if job.status != JobStatus.CANCELLED:
-                job.mark_failed(str(err))
+            self._handle_lifecycle_error(job, err)
 
     def _process_audio_pipeline(self, job: DownloadJob, metadata: VideoMetadata) -> str:
         dest_path = self._storage.get_output_path(f"{metadata.clean_title}.mp3", is_audio=True)
@@ -155,11 +248,10 @@ class DownloadManager(DownloadUseCasePort):
                     job.source_url,
                     dest_path,
                     is_audio=True,
-                    progress_callback=job.update_progress,
+                    progress_callback=lambda p: self._update_job_progress(job, p),
                     is_cancelled=lambda: job.status == JobStatus.CANCELLED,
                 )
             except JobCancelledError:
-                # Si el usuario canceló a mitad de camino, borramos el archivo a medio cocinar
                 self._storage.remove_files([dest_path])
                 raise
 
@@ -169,13 +261,12 @@ class DownloadManager(DownloadUseCasePort):
             self._downloader.download_stream(
                 audio_stream,
                 temp_audio,
-                progress_callback=lambda p: job.update_progress(p * 0.85),
+                progress_callback=lambda p: self._update_job_progress(job, p * 0.85),
                 is_cancelled=lambda: job.status == JobStatus.CANCELLED,
             )
-            job.status = JobStatus.MUXING
+            self._set_job_status(job, JobStatus.MUXING)
             return self._processor.convert_to_mp3(temp_audio, dest_path)
         finally:
-            # Limpiamos el archivo temporal sí o sí; nadie quiere gigabytes de basura huérfana.
             self._storage.remove_files([temp_audio])
 
     def _process_video_pipeline(self, job: DownloadJob, metadata: VideoMetadata) -> str:
@@ -188,15 +279,13 @@ class DownloadManager(DownloadUseCasePort):
                     dest_path,
                     is_audio=False,
                     quality=job.target_quality,
-                    progress_callback=job.update_progress,
+                    progress_callback=lambda p: self._update_job_progress(job, p),
                     is_cancelled=lambda: job.status == JobStatus.CANCELLED,
                 )
             except JobCancelledError:
-                # Si canceló, barremos el archivo incompleto para que no quede basura rota en Disco
                 self._storage.remove_files([dest_path])
                 raise
 
-        # Plan B de respaldo: bajamos la mejor pista de video y la mejor pista de audio por separado
         video_stream = select_video_stream(metadata.formats, job.target_quality)
         audio_stream = select_best_audio_stream(metadata.formats)
         temp_video = self._storage.create_temp_path(f"video_{job.job_id}", video_stream.extension)
@@ -205,16 +294,15 @@ class DownloadManager(DownloadUseCasePort):
             self._downloader.download_stream(
                 video_stream,
                 temp_video,
-                progress_callback=lambda p: job.update_progress(p * 0.5),
+                progress_callback=lambda p: self._update_job_progress(job, p * 0.5),
             )
             self._downloader.download_stream(
                 audio_stream,
                 temp_audio,
-                progress_callback=lambda p: job.update_progress(50.0 + (p * 0.35)),
+                progress_callback=lambda p: self._update_job_progress(job, 50.0 + (p * 0.35)),
             )
-            job.status = JobStatus.MUXING
+            self._set_job_status(job, JobStatus.MUXING)
             return self._processor.mux_video_audio(temp_video, temp_audio, dest_path)
         finally:
-            # Borramos los dos pedazos temporales para no dejar el disco C tapado de mugre
             self._storage.remove_files([temp_video, temp_audio])
 

@@ -4,6 +4,7 @@ Driving adapter implementing user interactions from the terminal.
 import argparse
 import sys
 import time
+from typing import Any, Optional
 from core.circuit_breaker import ResilientStreamResolver
 from core.download_manager import DownloadManager
 from domain.models import JobStatus, MediaKind, QualityTarget
@@ -11,23 +12,29 @@ from adapters.out_bound.fast_downloader import FastMediaDownloader
 from adapters.out_bound.ffmpeg_processor import FFmpegProcessorAdapter
 from adapters.out_bound.innertube_resolver import InnerTubeResolver
 from adapters.out_bound.local_storage import LocalStorageAdapter
+from adapters.out_bound.sqlite_history import SqliteHistoryAdapter
 from adapters.out_bound.ytdlp_resolver import YtDlpResolver
 
 
-def build_default_manager() -> DownloadManager:
+def build_default_manager(
+    cookies_browser: Optional[str] = None,
+    history_repo: Optional[Any] = None,
+) -> DownloadManager:
     """Dependency Injection bootstrap assembling the hexagonal graph."""
     storage = LocalStorageAdapter()
-    downloader = FastMediaDownloader()
+    downloader = FastMediaDownloader(cookies_browser=cookies_browser)
     processor = FFmpegProcessorAdapter()
-    primary_resolver = YtDlpResolver()
+    primary_resolver = YtDlpResolver(cookies_browser=cookies_browser)
     fallback_resolver = InnerTubeResolver()
 
     router = ResilientStreamResolver([primary_resolver, fallback_resolver])
+    history = history_repo if history_repo is not None else SqliteHistoryAdapter()
     return DownloadManager(
         resolver=router,
         downloader=downloader,
         processor=processor,
         storage=storage,
+        history_repo=history,
     )
 
 
@@ -51,9 +58,16 @@ def run_cli() -> None:
         action="store_true",
         help="Inspect video information without downloading",
     )
+    parser.add_argument(
+        "--cookies-from-browser",
+        dest="cookies_browser",
+        choices=["chrome", "firefox", "edge", "brave", "opera", "vivaldi", "safari"],
+        default=None,
+        help="Extract session cookies directly from your local browser",
+    )
 
     args = parser.parse_args()
-    manager = build_default_manager()
+    manager = build_default_manager(cookies_browser=args.cookies_browser)
 
     try:
         if args.inspect:
