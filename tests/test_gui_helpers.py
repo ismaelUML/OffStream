@@ -1,5 +1,21 @@
-"""Unit tests for GUI display formatting helpers."""
-from gui import _compute_pipeline_display
+from gui import _compute_pipeline_display, _format_duration, _truncate_title
+
+
+def test_format_duration():
+    assert _format_duration(0) == "0:00"
+    assert _format_duration(45) == "0:45"
+    assert _format_duration(65) == "1:05"
+    assert _format_duration(3665) == "1:01:05"
+
+
+def test_truncate_title():
+    short_title = "Short Title"
+    assert _truncate_title(short_title, max_chars=20) == "Short Title"
+
+    long_title = "This is a very long video title that needs to be truncated cleanly"
+    truncated = _truncate_title(long_title, max_chars=25)
+    assert len(truncated) <= 25
+    assert truncated.endswith("...")
 
 
 def test_compute_pipeline_display_idle_empty():
