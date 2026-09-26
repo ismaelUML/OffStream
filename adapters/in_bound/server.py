@@ -24,11 +24,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Permitimos cualquier origen porque la extensión corre con su propio chrome-extension://
-# y no queremos estar persiguiendo IDs dinámicos de Chrome un viernes a la tarde.
+# Bloqueamos orígenes web arbitrarios para evitar ataques SSRF/CSRF desde páginas maliciosas en el navegador.
+# Solo permitimos extensiones de navegador (Chrome/Firefox) y peticiones locales desde localhost o 127.0.0.1.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=r"^(chrome-extension://.*|moz-extension://.*|http://(localhost|127\.0\.0\.1)(:\d+)?)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -130,6 +130,23 @@ def list_jobs():
         )
         for j in manager.list_jobs()
     ]
+
+
+@app.delete("/api/jobs/{job_id}")
+def cancel_job(job_id: str):
+    success = manager.cancel_job(job_id)
+    if not success:
+        job = manager.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=400, detail="Job is not in a cancellable state")
+    return {"status": "cancelled", "job_id": job_id}
+
+
+@app.post("/api/jobs/clear")
+def clear_finished_jobs():
+    cleared_count = manager.clear_finished_jobs()
+    return {"status": "ok", "cleared_count": cleared_count}
 
 
 def start_server(host: str = "127.0.0.1", port: int = 8765):

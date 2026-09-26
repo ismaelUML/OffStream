@@ -28,3 +28,12 @@ class DownloadUseCasePort(Protocol):
     def list_jobs(self) -> List[DownloadJob]:
         """List all current jobs in the pipeline."""
         ...
+
+    def cancel_job(self, job_id: str) -> bool:
+        """Cancel a pending or running job."""
+        ...
+
+    def clear_finished_jobs(self) -> int:
+        """Remove completed, failed, or cancelled jobs from memory."""
+        ...
+

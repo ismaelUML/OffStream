@@ -26,6 +26,7 @@ class JobStatus(str, Enum):
     MUXING = "muxing"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 @dataclass(frozen=True)
@@ -77,3 +78,9 @@ class DownloadJob:
         self.status = JobStatus.FAILED
         self.error_message = error
         self.completed_at = datetime.utcnow()
+
+    def mark_cancelled(self) -> None:
+        self.status = JobStatus.CANCELLED
+        self.error_message = "Cancelled by user"
+        self.completed_at = datetime.utcnow()
+
