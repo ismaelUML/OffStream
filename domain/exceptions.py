@@ -29,3 +29,8 @@ class QueueFullError(DomainError):
 class MuxingError(DomainError):
     """Raised when merging or processing audio/video streams fails."""
     pass
+
+
+class JobCancelledError(DomainError):
+    """Raised when a download job is cancelled while in progress."""
+    pass

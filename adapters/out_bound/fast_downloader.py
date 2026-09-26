@@ -4,9 +4,9 @@
 # embebido para que baje a la velocidad real de tu conexión (~2 segundos).
 from pathlib import Path
 from typing import Any, Dict, Optional
-from domain.exceptions import StreamNotFoundError
+from domain.exceptions import JobCancelledError, StreamNotFoundError
 from domain.models import QualityTarget, StreamFormat
-from ports.out_bound import MediaDownloaderPort, ProgressCallback
+from ports.out_bound import CancellationCheck, MediaDownloaderPort, ProgressCallback
 
 try:
     import imageio_ffmpeg
@@ -29,6 +29,7 @@ class FastMediaDownloader(MediaDownloaderPort):
         stream: StreamFormat,
         output_path: str,
         progress_callback: Optional[ProgressCallback] = None,
+        is_cancelled: Optional[CancellationCheck] = None,
     ) -> str:
         if not stream.url:
             raise StreamNotFoundError(f"Stream {stream.format_id} has no valid URL.")
@@ -36,7 +37,7 @@ class FastMediaDownloader(MediaDownloaderPort):
         if yt_dlp is None:
             raise StreamNotFoundError("yt-dlp is not available.")
 
-        ydl_opts = self._build_opts(output_path, progress_callback)
+        ydl_opts = self._build_opts(output_path, progress_callback, is_cancelled)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([stream.url])
 
@@ -49,21 +50,27 @@ class FastMediaDownloader(MediaDownloaderPort):
         is_audio: bool = False,
         quality: QualityTarget = QualityTarget.BEST,
         progress_callback: Optional[ProgressCallback] = None,
+        is_cancelled: Optional[CancellationCheck] = None,
     ) -> str:
         """Download directly from YouTube watch URL at max unthrottled line speed."""
         if yt_dlp is None:
             raise StreamNotFoundError("yt-dlp is not available.")
 
-        ydl_opts = self._build_direct_opts(output_path, is_audio, quality, progress_callback)
+        ydl_opts = self._build_direct_opts(output_path, is_audio, quality, progress_callback, is_cancelled)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
         return output_path
 
-    def _build_opts(self, output_path: str, callback: Optional[ProgressCallback]) -> Dict[str, Any]:
+    def _build_opts(
+        self,
+        output_path: str,
+        callback: Optional[ProgressCallback],
+        is_cancelled: Optional[CancellationCheck] = None,
+    ) -> Dict[str, Any]:
         return {
             "outtmpl": output_path,
-            "progress_hooks": [self._make_progress_hook(callback)],
+            "progress_hooks": [self._make_progress_hook(callback, is_cancelled)],
             "quiet": True,
             "no_warnings": True,
             "noprogress": True,
@@ -83,8 +90,9 @@ class FastMediaDownloader(MediaDownloaderPort):
         is_audio: bool,
         quality: QualityTarget,
         callback: Optional[ProgressCallback],
+        is_cancelled: Optional[CancellationCheck] = None,
     ) -> Dict[str, Any]:
-        base_opts = self._build_opts(output_path, callback)
+        base_opts = self._build_opts(output_path, callback, is_cancelled)
 
         if is_audio:
             # YouTube no te da un MP3 masticado; te da opus o m4a crudo.
@@ -116,8 +124,16 @@ class FastMediaDownloader(MediaDownloaderPort):
 
         return base_opts
 
-    def _make_progress_hook(self, callback: Optional[ProgressCallback]):
+    def _make_progress_hook(
+        self,
+        callback: Optional[ProgressCallback],
+        is_cancelled: Optional[CancellationCheck] = None,
+    ):
         def hook(d: Dict[str, Any]) -> None:
+            # Si el usuario apretó cancelar, tiramos JobCancelledError para cortar de cuajo la conexión TCP
+            if is_cancelled and is_cancelled():
+                raise JobCancelledError("Descarga cancelada por el usuario a mitad de transferencia.")
+
             if d.get("status") == "downloading" and callback:
                 total = d.get("total_bytes") or d.get("total_bytes_estimate") or 1
                 downloaded = d.get("downloaded_bytes", 0)

@@ -25,7 +25,10 @@ class DummyResolver:
 
 
 class DummyDownloader:
-    def download_stream(self, stream, output_path, progress_callback=None):
+    def download_stream(self, stream, output_path, progress_callback=None, is_cancelled=None):
+        if is_cancelled and is_cancelled():
+            from domain.exceptions import JobCancelledError
+            raise JobCancelledError("Aborted")
         if progress_callback:
             progress_callback(100.0)
         return output_path
@@ -130,4 +133,24 @@ def test_download_manager_history_eviction():
     assert len(manager._jobs) == 2
     assert "done_3" in manager._jobs
     assert "done_4" in manager._jobs
+
+
+def test_download_manager_aborts_on_job_cancelled_error():
+    manager = DownloadManager(
+        resolver=DummyResolver(),
+        downloader=DummyDownloader(),
+        processor=DummyProcessor(),
+        storage=DummyStorage(),
+        max_workers=1,
+    )
+    job = DownloadJob("job_c", "url_c", MediaKind.VIDEO, QualityTarget.BEST)
+    manager._jobs["job_c"] = job
+
+    # Cancel via manager
+    manager.cancel_job("job_c")
+    manager._run_job_lifecycle(job)
+
+    assert job.status == JobStatus.CANCELLED
+    assert job.completed_at is not None
+
 

@@ -18,6 +18,7 @@ class StreamResolverPort(Protocol):
 
 
 ProgressCallback = Callable[[float], None]
+CancellationCheck = Callable[[], bool]
 
 
 class MediaDownloaderPort(Protocol):

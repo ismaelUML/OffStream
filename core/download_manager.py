@@ -5,7 +5,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
-from domain.exceptions import QueueFullError
+from domain.exceptions import JobCancelledError, QueueFullError
 from domain.models import (
     DownloadJob,
     JobStatus,
@@ -137,6 +137,10 @@ class DownloadManager(DownloadUseCasePort):
                 return
 
             job.mark_completed(path)
+        except JobCancelledError:
+            # Si el usuario apretó cancelar a mitad de descarga de bytes,
+            # nos aseguramos de que el job quede marcado como CANCELLED limpiamente
+            job.mark_cancelled()
         except Exception as err:
             if job.status != JobStatus.CANCELLED:
                 job.mark_failed(str(err))
@@ -146,12 +150,18 @@ class DownloadManager(DownloadUseCasePort):
         # Si el downloader tiene la ruta rápida acelerada directa, la usamos de cabeza.
         # Nos ahorra tener que bajar el archivo temporal a mano y llamar a ffmpeg por separado.
         if hasattr(self._downloader, "download_direct"):
-            return self._downloader.download_direct(
-                job.source_url,
-                dest_path,
-                is_audio=True,
-                progress_callback=job.update_progress,
-            )
+            try:
+                return self._downloader.download_direct(
+                    job.source_url,
+                    dest_path,
+                    is_audio=True,
+                    progress_callback=job.update_progress,
+                    is_cancelled=lambda: job.status == JobStatus.CANCELLED,
+                )
+            except JobCancelledError:
+                # Si el usuario canceló a mitad de camino, borramos el archivo a medio cocinar
+                self._storage.remove_files([dest_path])
+                raise
 
         audio_stream = select_best_audio_stream(metadata.formats)
         temp_audio = self._storage.create_temp_path(f"audio_{job.job_id}", audio_stream.extension)
@@ -160,6 +170,7 @@ class DownloadManager(DownloadUseCasePort):
                 audio_stream,
                 temp_audio,
                 progress_callback=lambda p: job.update_progress(p * 0.85),
+                is_cancelled=lambda: job.status == JobStatus.CANCELLED,
             )
             job.status = JobStatus.MUXING
             return self._processor.convert_to_mp3(temp_audio, dest_path)
@@ -171,13 +182,19 @@ class DownloadManager(DownloadUseCasePort):
         dest_path = self._storage.get_output_path(f"{metadata.clean_title}.mp4", is_audio=False)
         # Mismo caso: la ruta rápida directa descarga fragments paralelos y une con ffmpeg en 2 segundos.
         if hasattr(self._downloader, "download_direct"):
-            return self._downloader.download_direct(
-                job.source_url,
-                dest_path,
-                is_audio=False,
-                quality=job.target_quality,
-                progress_callback=job.update_progress,
-            )
+            try:
+                return self._downloader.download_direct(
+                    job.source_url,
+                    dest_path,
+                    is_audio=False,
+                    quality=job.target_quality,
+                    progress_callback=job.update_progress,
+                    is_cancelled=lambda: job.status == JobStatus.CANCELLED,
+                )
+            except JobCancelledError:
+                # Si canceló, barremos el archivo incompleto para que no quede basura rota en Disco
+                self._storage.remove_files([dest_path])
+                raise
 
         # Plan B de respaldo: bajamos la mejor pista de video y la mejor pista de audio por separado
         video_stream = select_video_stream(metadata.formats, job.target_quality)
