@@ -2,7 +2,7 @@
 Zero external dependencies. Pure standard library.
 """
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
 
@@ -72,17 +72,17 @@ class DownloadJob:
         self.status = JobStatus.COMPLETED
         self.progress_percentage = 100.0
         self.output_path = path
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
 
     def mark_failed(self, error: str) -> None:
         self.status = JobStatus.FAILED
         self.error_message = error
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
 
     def mark_cancelled(self) -> None:
         self.status = JobStatus.CANCELLED
         self.error_message = "Cancelled by user"
-        self.completed_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
 
 
 @dataclass(frozen=True)

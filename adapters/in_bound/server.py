@@ -181,7 +181,7 @@ async def stream_events():
                     # caliente para que los routers/proxies no cierren la conexión por inactividad.
                     yield ": heartbeat\n\n"
         except asyncio.CancelledError:
-            pass
+            raise
         finally:
             manager.unsubscribe_events(q)
 

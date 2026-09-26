@@ -5,7 +5,7 @@ import queue
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from domain.exceptions import JobCancelledError, QueueFullError
 from domain.models import (
@@ -178,7 +178,7 @@ class DownloadManager(DownloadUseCasePort):
                 title=metadata.clean_title,
                 channel=metadata.uploader,
                 duration_seconds=metadata.duration_seconds,
-                created_at=datetime.utcnow().isoformat(),
+                created_at=datetime.now(timezone.utc).isoformat(),
                 file_path=path,
                 media_kind=job.target_kind.value if hasattr(job.target_kind, "value") else str(job.target_kind),
             )
