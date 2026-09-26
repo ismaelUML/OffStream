@@ -2,6 +2,7 @@
 # Google te estrangula la conexión a 50 KB/s para que el video tarde una eternidad.
 # Esta clase usa el motor interno de yt-dlp con 4 fragmentos paralelos y el ffmpeg
 # embebido para que baje a la velocidad real de tu conexión (~2 segundos).
+from pathlib import Path
 from typing import Any, Dict, Optional
 from domain.exceptions import StreamNotFoundError
 from domain.models import QualityTarget, StreamFormat
@@ -69,6 +70,11 @@ class FastMediaDownloader(MediaDownloaderPort):
             "continuedl": False,
             "concurrent_fragment_downloads": 4,
             "ffmpeg_location": _BUNDLED_FFMPEG,
+            # YouTube a veces tira un reset de TCP a mitad de descarga para molestar.
+            # Reintentamos hasta 3 veces con timeout de 15s antes de tirar la toalla.
+            "retries": 3,
+            "fragment_retries": 5,
+            "socket_timeout": 15,
         }
 
     def _build_direct_opts(
@@ -84,14 +90,22 @@ class FastMediaDownloader(MediaDownloaderPort):
             # YouTube no te da un MP3 masticado; te da opus o m4a crudo.
             # Le pedimos el mejor flujo de audio y dejamos que FFmpeg haga la conversión sucia.
             base_opts["format"] = "bestaudio/best"
-            base_opts["postprocessors"] = [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }]
+            # Clavamos tags ID3 (artista, título) y estampamos el thumbnail como portada
+            # para que en el celular o estéreo del auto no aparezca un cuadrado negro genérico.
+            base_opts["writethumbnail"] = True
+            base_opts["postprocessors"] = [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                },
+                {"key": "FFmpegMetadata"},
+                {"key": "EmbedThumbnail", "already_have_thumbnail": False},
+            ]
             # yt-dlp insiste en agregarle su propia extensión tras el postproceso.
-            # Si dejamos el .mp3 en outtmpl, terminamos con "cancion.mp3.mp3". Nadie quiere eso.
-            clean_out = output_path.replace(".mp3", "")
+            # Usamos with_suffix para remover SOLO la extensión final. Si usábamos .replace(".mp3", "")
+            # y la ruta tenía "mp3" en el nombre de usuario o en el título, reventaba el path.
+            clean_out = str(Path(output_path).with_suffix(""))
             base_opts["outtmpl"] = f"{clean_out}.%(ext)s"
         elif quality == QualityTarget.P720:
             base_opts["format"] = "bestvideo[height<=720]+bestaudio/best[height<=720]/best"
