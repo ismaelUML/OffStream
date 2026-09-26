@@ -13,13 +13,17 @@ except ImportError:
     yt_dlp = None
 
 
+from .cookies_helper import is_cookie_error, resolve_cookie_opts
+
+
 class YtDlpResolver:
     """Uses yt-dlp internal API to extract metadata and decipher scrambled streams."""
 
-    def __init__(self) -> None:
+    def __init__(self, cookies_browser: Optional[str] = None) -> None:
         if yt_dlp is None:
             raise ResolutionError("yt-dlp package is not installed.")
 
+        self._cookies_browser = cookies_browser
         self._ydl_opts = {
             "quiet": True,
             "no_warnings": True,
@@ -34,15 +38,34 @@ class YtDlpResolver:
         except Exception:
             return False
 
+    def _retry_without_cookies(self, canonical_url: str, opts: Dict[str, Any]) -> Dict[str, Any]:
+        opts.pop("cookiesfrombrowser", None)
+        opts.pop("cookiefile", None)
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(canonical_url, download=False) or {}
+        except Exception as inner_err:
+            raise ResolutionError(f"yt-dlp extraction failed: {inner_err}")
+
+    @staticmethod
+    def _has_cookies(opts: Dict[str, Any]) -> bool:
+        return "cookiesfrombrowser" in opts or "cookiefile" in opts
+
+    def _extract_info_safely(self, canonical_url: str) -> Dict[str, Any]:
+        opts = dict(self._ydl_opts)
+        opts.update(resolve_cookie_opts(self._cookies_browser))
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(canonical_url, download=False) or {}
+        except Exception as err:
+            if is_cookie_error(err) and self._has_cookies(opts):
+                return self._retry_without_cookies(canonical_url, opts)
+            raise ResolutionError(f"yt-dlp extraction failed: {err}")
+
     def resolve(self, url_or_id: str) -> VideoMetadata:
         video_id = extract_video_id(url_or_id)
         canonical_url = build_canonical_url(video_id)
-
-        try:
-            with yt_dlp.YoutubeDL(self._ydl_opts) as ydl:
-                info = ydl.extract_info(canonical_url, download=False)
-        except Exception as err:
-            raise ResolutionError(f"yt-dlp extraction failed: {err}")
+        info = self._extract_info_safely(canonical_url)
 
         if not info:
             raise ResolutionError("yt-dlp returned no video info dictionary.")
@@ -76,6 +99,18 @@ class YtDlpResolver:
                 extracted.append(fmt)
         return extracted
 
+    @staticmethod
+    def _parse_resolution(f: Dict[str, Any]) -> Optional[str]:
+        if f.get("format_note"):
+            return str(f["format_note"])
+        height = f.get("height")
+        return f"{height}p" if height else None
+
+    @staticmethod
+    def _parse_bitrate(f: Dict[str, Any]) -> Optional[int]:
+        val = f.get("tbr") or f.get("abr")
+        return int(val) * 1000 if val else None
+
     def _parse_single_format(self, f: Dict[str, Any]) -> Optional[StreamFormat]:
         url = f.get("url")
         if not url:
@@ -83,17 +118,16 @@ class YtDlpResolver:
 
         vcodec = f.get("vcodec", "none")
         acodec = f.get("acodec", "none")
-        resolution = f.get("format_note") or (f"{f.get('height')}p" if f.get("height") else None)
-        bitrate_val = int(f.get("tbr") or f.get("abr") or 0) * 1000 or None
+        filesize = f.get("filesize") or f.get("filesize_approx")
 
         return StreamFormat(
             format_id=str(f.get("format_id", "")),
             extension=f.get("ext", "mp4"),
             url=url,
-            bitrate=bitrate_val,
-            resolution=resolution,
+            bitrate=self._parse_bitrate(f),
+            resolution=self._parse_resolution(f),
             is_video=(vcodec != "none"),
             is_audio=(acodec != "none"),
-            filesize_estimate=f.get("filesize") or f.get("filesize_approx"),
+            filesize_estimate=filesize,
         )
 

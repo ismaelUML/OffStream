@@ -21,8 +21,12 @@ try:
 except ImportError:
     yt_dlp = None
 
+from .cookies_helper import is_cookie_error, resolve_cookie_opts
+
 
 class FastMediaDownloader(MediaDownloaderPort):
+    def __init__(self, cookies_browser: Optional[str] = None) -> None:
+        self._cookies_browser = cookies_browser
 
     def download_stream(
         self,
@@ -38,8 +42,17 @@ class FastMediaDownloader(MediaDownloaderPort):
             raise StreamNotFoundError("yt-dlp is not available.")
 
         ydl_opts = self._build_opts(output_path, progress_callback, is_cancelled)
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([stream.url])
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([stream.url])
+        except Exception as err:
+            if is_cookie_error(err) and ("cookiesfrombrowser" in ydl_opts or "cookiefile" in ydl_opts):
+                ydl_opts.pop("cookiesfrombrowser", None)
+                ydl_opts.pop("cookiefile", None)
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([stream.url])
+            else:
+                raise
 
         return output_path
 
@@ -57,8 +70,19 @@ class FastMediaDownloader(MediaDownloaderPort):
             raise StreamNotFoundError("yt-dlp is not available.")
 
         ydl_opts = self._build_direct_opts(output_path, is_audio, quality, progress_callback, is_cancelled)
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+        except Exception as err:
+            # Si Chrome tiene bloqueada su base de datos o falló la extracción de cookies,
+            # reintentamos sin cookies de forma transparente para que la descarga no explote.
+            if is_cookie_error(err) and ("cookiesfrombrowser" in ydl_opts or "cookiefile" in ydl_opts):
+                ydl_opts.pop("cookiesfrombrowser", None)
+                ydl_opts.pop("cookiefile", None)
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+            else:
+                raise
 
         return output_path
 
@@ -68,7 +92,7 @@ class FastMediaDownloader(MediaDownloaderPort):
         callback: Optional[ProgressCallback],
         is_cancelled: Optional[CancellationCheck] = None,
     ) -> Dict[str, Any]:
-        return {
+        opts: Dict[str, Any] = {
             "outtmpl": output_path,
             "progress_hooks": [self._make_progress_hook(callback, is_cancelled)],
             "quiet": True,
@@ -83,6 +107,9 @@ class FastMediaDownloader(MediaDownloaderPort):
             "fragment_retries": 5,
             "socket_timeout": 15,
         }
+        # Inyectamos cookies del navegador o cookies.txt si están disponibles
+        opts.update(resolve_cookie_opts(self._cookies_browser))
+        return opts
 
     def _build_direct_opts(
         self,
