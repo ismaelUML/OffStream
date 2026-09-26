@@ -11,33 +11,19 @@ const btnClear = document.getElementById("btn-clear");
 const btnRefresh = document.getElementById("btn-refresh");
 const jobsList = document.getElementById("jobs-list");
 
-// Si el usuario ya está viendo un video en la pestaña activa, le ahorramos
-// el embole de tener que copiar y pegar la URL a mano.
-chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-  if (tabs && tabs[0] && tabs[0].url) {
-    const tabUrl = tabs[0].url;
-    if (tabUrl.includes("youtube.com") || tabUrl.includes("youtu.be")) {
-      urlInput.value = tabUrl;
-    }
-  }
-});
+let eventSource = null;
+let currentJobs = [];
 
-async function checkHealth() {
-  try {
-    // Timeout corto de 1.2s: si el daemon local no responde al toque,
-    // es porque está apagado; no dejemos la UI clavada esperando.
-    const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(1200) });
-    if (res.ok) {
-      statusPill.className = "status-pill online";
-      statusText.textContent = "Online";
-      return true;
+// Autodetectar URL si el usuario ya está viendo un video en la pestaña activa
+if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.query) {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs && tabs[0] && tabs[0].url) {
+      const tabUrl = tabs[0].url;
+      if (tabUrl.includes("youtube.com") || tabUrl.includes("youtu.be")) {
+        urlInput.value = tabUrl;
+      }
     }
-  } catch {
-    // Daemon apagado o muerto en segundo plano.
-  }
-  statusPill.className = "status-pill offline";
-  statusText.textContent = "Offline";
-  return false;
+  });
 }
 
 btnPaste.addEventListener("click", async () => {
@@ -61,7 +47,8 @@ if (btnClear) {
   btnClear.addEventListener("click", async () => {
     try {
       await fetch(`${API_BASE}/api/jobs/clear`, { method: "POST" });
-      refreshJobs();
+      currentJobs = currentJobs.filter((j) => !["completed", "failed", "cancelled"].includes(j.status));
+      renderJobs();
     } catch {
       // Ignorar si offline
     }
@@ -71,7 +58,6 @@ if (btnClear) {
 window.cancelJob = async function (jobId) {
   try {
     await fetch(`${API_BASE}/api/jobs/${jobId}`, { method: "DELETE" });
-    refreshJobs();
   } catch {
     // Ignorar si offline
   }
@@ -99,56 +85,103 @@ async function triggerDownload(kind, quality) {
 
     urlInput.value = "";
     refreshJobs();
-  } catch (err) {
-    alert(`Could not connect to local daemon.\nRun 'python -m adapters.in_bound.server'`);
+  } catch {
+    alert("Could not connect to local daemon.\nRun 'python -m adapters.in_bound.server'");
   }
+}
+
+function updateJobInList(job) {
+  const existingIdx = currentJobs.findIndex((j) => j.job_id === job.job_id);
+  if (existingIdx >= 0) {
+    currentJobs[existingIdx] = { ...currentJobs[existingIdx], ...job };
+  } else {
+    currentJobs.unshift(job);
+  }
+  renderJobs();
+}
+
+function renderJobs() {
+  if (!currentJobs || currentJobs.length === 0) {
+    jobsList.innerHTML = `<div class="empty-state">No active downloads</div>`;
+    return;
+  }
+
+  jobsList.innerHTML = currentJobs
+    .slice(0, 5)
+    .map((job) => {
+      const isCancellable = ["pending", "resolving", "downloading", "muxing"].includes(job.status);
+      const cancelBtnHtml = isCancellable
+        ? `<button class="btn-cancel-job" onclick="cancelJob('${job.job_id}')" title="Cancel Job">✕</button>`
+        : "";
+      const pct = Math.round(job.progress_percentage || 0);
+
+      return `
+        <div class="job-card" id="card-${job.job_id}">
+          <div class="job-card-top">
+            <span class="job-id">Job #${job.job_id} (${(job.target_kind || "video").toUpperCase()})</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="job-status ${job.status}">${job.status} ${pct > 0 && pct < 100 ? pct + "%" : ""}</span>
+              ${cancelBtnHtml}
+            </div>
+          </div>
+          <div class="job-progress-bar">
+            <div class="job-progress-fill" style="width: ${job.progress_percentage || 0}%"></div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
 }
 
 async function refreshJobs() {
   try {
     const res = await fetch(`${API_BASE}/api/jobs`);
     if (!res.ok) return;
-
-    const jobs = await res.json();
-    if (jobs.length === 0) {
-      jobsList.innerHTML = `<div class="empty-state">No active downloads</div>`;
-      return;
-    }
-
-    jobsList.innerHTML = jobs
-      .slice(-4)
-      .reverse()
-      .map((job) => {
-        const isCancellable = ["pending", "resolving", "downloading", "muxing"].includes(job.status);
-        const cancelBtnHtml = isCancellable
-          ? `<button class="btn-cancel-job" onclick="cancelJob('${job.job_id}')" title="Cancel Job">✕</button>`
-          : "";
-
-        return `
-          <div class="job-card">
-            <div class="job-card-top">
-              <span class="job-id">Job #${job.job_id} (${job.target_kind.toUpperCase()})</span>
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <span class="job-status ${job.status}">${job.status}</span>
-                ${cancelBtnHtml}
-              </div>
-            </div>
-            <div class="job-progress-bar">
-              <div class="job-progress-fill" style="width: ${job.progress_percentage}%"></div>
-            </div>
-          </div>
-        `;
-      })
-      .join("");
+    currentJobs = await res.json();
+    renderJobs();
   } catch {
     // Offline
   }
 }
 
-// Polling cada 2 segundos. No es WebSockets ni magia reactiva, pero para
-// ver la barrita de progreso de una descarga local alcanza y sobra sin comer CPU.
-checkHealth().then(refreshJobs);
-setInterval(() => {
-  checkHealth();
-  refreshJobs();
-}, 2000);
+// Server-Sent Events (SSE): Actualizaciones en tiempo real sin saturar la red local con requests repetitivos
+function connectSSE() {
+  if (eventSource) {
+    eventSource.close();
+  }
+
+  try {
+    eventSource = new EventSource(`${API_BASE}/api/events`);
+
+    eventSource.onopen = () => {
+      statusPill.className = "status-pill online";
+      statusText.textContent = "Online";
+    };
+
+    eventSource.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload.type === "connected") {
+          statusPill.className = "status-pill online";
+          statusText.textContent = "Online";
+          refreshJobs();
+        } else if (payload.type === "job_update") {
+          updateJobInList(payload);
+        }
+      } catch {
+        // Heartbeats o comentarios
+      }
+    };
+
+    eventSource.onerror = () => {
+      statusPill.className = "status-pill offline";
+      statusText.textContent = "Offline";
+    };
+  } catch {
+    // Fallback silencioso
+  }
+}
+
+// Inicializamos SSE y sincronizamos estado
+connectSSE();
+refreshJobs();

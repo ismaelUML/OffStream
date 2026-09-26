@@ -1,10 +1,12 @@
-# Servidor local FastAPI: el único puente entre la extensión del navegador y Python.
-# Si este proceso se muere o no arranca, la extensión de Chrome queda sorda y muda.
+import asyncio
+import json
 import os
 import sys
+from pathlib import Path
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from domain.models import MediaKind, QualityTarget
 from .cli import build_default_manager
@@ -56,6 +58,18 @@ class JobResponse(BaseModel):
     progress_percentage: float
     output_path: Optional[str] = None
     error_message: Optional[str] = None
+
+
+class HistoryRecordResponse(BaseModel):
+    id: int
+    video_id: str
+    title: str
+    channel: str
+    duration_seconds: int
+    created_at: str
+    file_path: str
+    media_kind: str
+    file_exists: bool
 
 
 @app.get("/health")
@@ -147,6 +161,91 @@ def cancel_job(job_id: str):
 def clear_finished_jobs():
     cleared_count = manager.clear_finished_jobs()
     return {"status": "ok", "cleared_count": cleared_count}
+
+
+@app.get("/api/events")
+async def stream_events():
+    """Server-Sent Events (SSE) stream para recibir progreso a 60 FPS sin saturar la red con polling."""
+    q = manager.subscribe_events()
+
+    async def event_generator():
+        try:
+            yield f"data: {json.dumps({'type': 'connected'})}\n\n"
+            while True:
+                try:
+                    event = await asyncio.to_thread(q.get, timeout=15.0)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except Exception:
+                    yield ": heartbeat\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            manager.unsubscribe_events(q)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.get("/api/history", response_model=List[HistoryRecordResponse])
+def get_history(query: Optional[str] = None, limit: int = 100):
+    records = manager.get_history(limit=limit, query=query)
+    return [
+        HistoryRecordResponse(
+            id=r.id or 0,
+            video_id=r.video_id,
+            title=r.title,
+            channel=r.channel,
+            duration_seconds=r.duration_seconds,
+            created_at=r.created_at,
+            file_path=r.file_path,
+            media_kind=r.media_kind,
+            file_exists=Path(r.file_path).is_file(),
+        )
+        for r in records
+    ]
+
+
+@app.delete("/api/history/{record_id}")
+def delete_history_record(record_id: int):
+    success = manager.delete_history_record(record_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+    return {"status": "ok", "deleted_id": record_id}
+
+
+@app.post("/api/history/clear")
+def clear_all_history():
+    count = manager.clear_history()
+    return {"status": "ok", "cleared_count": count}
+
+
+def _find_history_file(record_id: int) -> Path:
+    records = manager.get_history(limit=500)
+    matched = next((r for r in records if r.id == record_id), None)
+    if not matched:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+
+    p = Path(matched.file_path)
+    if not p.is_file():
+        raise HTTPException(status_code=410, detail="Archivo movido o eliminado")
+    return p
+
+
+@app.post("/api/history/{record_id}/open")
+def open_history_file(record_id: int):
+    p = _find_history_file(record_id)
+    try:
+        os.startfile(str(p))
+        return {"status": "ok", "opened": str(p)}
+    except Exception as err:
+        raise HTTPException(status_code=500, detail=f"No se pudo abrir el archivo: {err}")
 
 
 def start_server(host: str = "127.0.0.1", port: int = 8765):
