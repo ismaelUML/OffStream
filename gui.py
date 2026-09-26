@@ -208,8 +208,8 @@ class YtGlobalDlApp(ctk.CTk):
         )
 
     def _stop_daemon_process(self):
-        # Buscamos a quemarropa el PID que tenga secuestrado el puerto 8765 y lo matamos
-        cmd = "$conn = Get-NetTCPConnection -LocalPort 8765 -ErrorAction SilentlyContinue; if ($conn) { foreach ($c in $conn) { Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue } }"
+        # Matamos todo el árbol de procesos (/F /T) para no dejar ffmpeg.exe comiendo CPU en el fondo
+        cmd = "$conn = Get-NetTCPConnection -LocalPort 8765 -ErrorAction SilentlyContinue; if ($conn) { foreach ($c in $conn) { taskkill.exe /F /T /PID $c.OwningProcess 2>$null } }"
         subprocess.run(["powershell", "-NoProfile", "-Command", cmd], creationflags=0x08000000)
 
     def _toggle_daemon(self):
