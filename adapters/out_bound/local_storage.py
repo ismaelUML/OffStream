@@ -33,7 +33,22 @@ class LocalStorageAdapter:
 
     def get_output_path(self, filename: str, is_audio: bool = False) -> str:
         target_dir = self._audio_dir if is_audio else self._video_dir
-        return str(target_dir / filename)
+        dest = target_dir / filename
+
+        # Si no existe, lo usamos directo sin tocar nada
+        if not dest.exists():
+            return str(dest)
+
+        # Si ya existe un archivo con el mismo nombre exacto, le encajamos un sufijo (1), (2)...
+        # No queremos que el usuario pierda un archivo que ya tenía guardado por un pisotón silencioso.
+        stem = dest.stem
+        suffix = dest.suffix
+        counter = 1
+        while dest.exists():
+            dest = target_dir / f"{stem} ({counter}){suffix}"
+            counter += 1
+
+        return str(dest)
 
     def create_temp_path(self, prefix: str, ext: str) -> str:
         # Metemos el PID del proceso y bytes aleatorios para que dos hilos
