@@ -29,7 +29,6 @@ class YtGlobalDlApp(ctk.CTk):
         self._downloads_dir = Path.home() / "Downloads" / "yt-global-dl"
         self._video_dir = self._downloads_dir / "videos"
         self._music_dir = self._downloads_dir / "music"
-        self._active_job_id = None
 
         self._build_ui()
         self._start_status_poller()
@@ -214,15 +213,20 @@ class YtGlobalDlApp(ctk.CTk):
         subprocess.run(["powershell", "-NoProfile", "-Command", cmd], creationflags=0x08000000)
 
     def _toggle_daemon(self):
-        is_online = self._check_daemon_health()
-        if is_online:
-            self._stop_daemon_process()
-            time.sleep(0.5)
-            self._update_status(False)
-        else:
-            self._start_daemon_process()
-            time.sleep(1.2)
-            self._update_status(self._check_daemon_health())
+        # Despachamos el apagado/encendido a un hilo para no clavarle la interfaz al usuario con sleep()
+        def _do_toggle():
+            is_online = self._check_daemon_health()
+            if is_online:
+                self._stop_daemon_process()
+                time.sleep(0.5)
+                self.after(0, lambda: self._update_status(False))
+            else:
+                self._start_daemon_process()
+                time.sleep(1.2)
+                healthy = self._check_daemon_health()
+                self.after(0, lambda: self._update_status(healthy))
+
+        threading.Thread(target=_do_toggle, daemon=True).start()
 
     def _setup_autostart(self):
         subprocess.run(["cmd", "/c", "install_autostart.bat"], cwd=str(Path(__file__).parent))
@@ -241,14 +245,13 @@ class YtGlobalDlApp(ctk.CTk):
         try:
             online = self._check_daemon_health()
             self._update_status(online)
-            if self._active_job_id:
-                self._poll_active_job()
+            if online:
+                self._poll_jobs_status()
         except Exception:
             pass
         finally:
             # Usamos .after() en vez de time.sleep() para no congelar el loop de la interfaz
             self.after(1500, self._poll_status_cycle)
-
 
     def _update_status(self, is_online: bool):
         if is_online:
@@ -272,62 +275,77 @@ class YtGlobalDlApp(ctk.CTk):
         else:
             kind, quality = "video", "best"
 
-        # Si el usuario hace click y el daemon estaba apagado, lo prendemos de prepo
-        if not self._check_daemon_health():
-            self._start_daemon_process()
-            time.sleep(1.2)
+        self.progress_label.configure(text="Queueing media...", text_color="#a78bfa")
+        # Vaciamos el input al vuelo para que el usuario pueda pegar el siguiente video sin esperar
+        self.url_entry.delete(0, "end")
 
+        def _do_submit():
+            # Si el usuario hace click y el daemon estaba apagado, lo levantamos en segundo plano sin congelar la ventana
+            if not self._check_daemon_health():
+                self._start_daemon_process()
+                time.sleep(1.2)
+
+            try:
+                res = requests.post(
+                    f"{API_BASE}/api/download",
+                    json={"url": url, "kind": kind, "quality": quality},
+                    timeout=5,
+                )
+                if res.status_code == 200:
+                    job_data = res.json()
+                    jid = job_data["job_id"]
+                    self.after(0, lambda: self.progress_label.configure(
+                        text=f"✓ Job #{jid} queued! You can add more downloads.",
+                        text_color="#34d399",
+                    ))
+                else:
+                    self.after(0, lambda: self.progress_label.configure(
+                        text=f"Error: {res.text}",
+                        text_color="#f87171",
+                    ))
+            except Exception as err:
+                self.after(0, lambda: self.progress_label.configure(
+                    text=f"Connection Error: {err}",
+                    text_color="#f87171",
+                ))
+
+        threading.Thread(target=_do_submit, daemon=True).start()
+
+    def _poll_jobs_status(self):
         try:
-            res = requests.post(
-                f"{API_BASE}/api/download",
-                json={"url": url, "kind": kind, "quality": quality},
-                timeout=5,
-            )
-            if res.status_code == 200:
-                job_data = res.json()
-                self._active_job_id = job_data["job_id"]
-                self.progress_label.configure(text=f"Queueing Job #{self._active_job_id}...", text_color="#a78bfa")
-                # Deshabilitamos el botón para que no spameen clicks mientras baja
-                self.download_btn.configure(state="disabled")
-            else:
-                self.progress_label.configure(text=f"Error: {res.text}", text_color="#f87171")
-        except Exception as err:
-            self.progress_label.configure(text=f"Connection Error: {err}", text_color="#f87171")
-
-    def _poll_active_job(self):
-        if not self._active_job_id:
-            return
-
-        try:
-            r = requests.get(f"{API_BASE}/api/jobs/{self._active_job_id}", timeout=2)
+            r = requests.get(f"{API_BASE}/api/jobs", timeout=2)
             if r.status_code != 200:
                 return
 
-            job = r.json()
-            pct = job.get("progress_percentage", 0.0)
-            status = job.get("status", "pending")
-            self.progress_bar.set(pct / 100.0)
+            jobs = r.json()
+            active_jobs = [
+                j for j in jobs
+                if j.get("status") in ("pending", "resolving", "downloading", "muxing")
+            ]
 
-            if status == "completed":
-                self.progress_label.configure(
-                    text="✓ Finished! Saved to Downloads folder.",
-                    text_color="#34d399",
-                )
-                self._active_job_id = None
-                # Reactivamos el botón para la próxima descarga
-                self.download_btn.configure(state="normal")
-            elif status == "failed":
-                self.progress_label.configure(
-                    text=f"✗ Failed: {job.get('error_message')}",
-                    text_color="#f87171",
-                )
-                self._active_job_id = None
-                self.download_btn.configure(state="normal")
+            if active_jobs:
+                # Monitoreamos la descarga activa más reciente y mostramos la cantidad en cola
+                latest = active_jobs[-1]
+                pct = latest.get("progress_percentage", 0.0)
+                status = latest.get("status", "pending")
+                self.progress_bar.set(pct / 100.0)
+                active_text = f"[{status.upper()}] {pct:.0f}% ({len(active_jobs)} active in queue)"
+                self.progress_label.configure(text=active_text, text_color="#60a5fa")
             else:
-                self.progress_label.configure(
-                    text=f"[{status.upper()}] {pct:.0f}%",
-                    text_color="#60a5fa",
-                )
+                completed = [j for j in jobs if j.get("status") == "completed"]
+                failed = [j for j in jobs if j.get("status") == "failed"]
+                if self.progress_bar.get() > 0:
+                    self.progress_bar.set(1.0)
+                    if failed and not completed:
+                        self.progress_label.configure(
+                            text=f"✗ Last download failed: {failed[-1].get('error_message')}",
+                            text_color="#f87171",
+                        )
+                    else:
+                        self.progress_label.configure(
+                            text="✓ Ready (All downloads finished)",
+                            text_color="#34d399",
+                        )
         except Exception:
             pass
 
