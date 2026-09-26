@@ -6,6 +6,8 @@ const urlInput = document.getElementById("url-input");
 const btnPaste = document.getElementById("btn-paste");
 const btnDownloadVideo = document.getElementById("btn-download-video");
 const btnDownloadAudio = document.getElementById("btn-download-audio");
+const qualitySelect = document.getElementById("quality-select");
+const btnClear = document.getElementById("btn-clear");
 const btnRefresh = document.getElementById("btn-refresh");
 const jobsList = document.getElementById("jobs-list");
 
@@ -47,9 +49,33 @@ btnPaste.addEventListener("click", async () => {
   }
 });
 
-btnDownloadVideo.addEventListener("click", () => triggerDownload("video", "best"));
+btnDownloadVideo.addEventListener("click", () => {
+  const quality = qualitySelect ? qualitySelect.value : "best";
+  triggerDownload("video", quality);
+});
+
 btnDownloadAudio.addEventListener("click", () => triggerDownload("audio", "audio_high"));
 btnRefresh.addEventListener("click", refreshJobs);
+
+if (btnClear) {
+  btnClear.addEventListener("click", async () => {
+    try {
+      await fetch(`${API_BASE}/api/jobs/clear`, { method: "POST" });
+      refreshJobs();
+    } catch {
+      // Ignorar si offline
+    }
+  });
+}
+
+window.cancelJob = async function (jobId) {
+  try {
+    await fetch(`${API_BASE}/api/jobs/${jobId}`, { method: "DELETE" });
+    refreshJobs();
+  } catch {
+    // Ignorar si offline
+  }
+};
 
 async function triggerDownload(kind, quality) {
   const url = urlInput.value.trim();
@@ -71,6 +97,7 @@ async function triggerDownload(kind, quality) {
       return;
     }
 
+    urlInput.value = "";
     refreshJobs();
   } catch (err) {
     alert(`Could not connect to local daemon.\nRun 'python -m adapters.in_bound.server'`);
@@ -91,17 +118,27 @@ async function refreshJobs() {
     jobsList.innerHTML = jobs
       .slice(-4)
       .reverse()
-      .map((job) => `
-        <div class="job-card">
-          <div class="job-card-top">
-            <span class="job-id">Job #${job.job_id} (${job.target_kind.toUpperCase()})</span>
-            <span class="job-status ${job.status}">${job.status}</span>
+      .map((job) => {
+        const isCancellable = ["pending", "resolving", "downloading", "muxing"].includes(job.status);
+        const cancelBtnHtml = isCancellable
+          ? `<button class="btn-cancel-job" onclick="cancelJob('${job.job_id}')" title="Cancel Job">✕</button>`
+          : "";
+
+        return `
+          <div class="job-card">
+            <div class="job-card-top">
+              <span class="job-id">Job #${job.job_id} (${job.target_kind.toUpperCase()})</span>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="job-status ${job.status}">${job.status}</span>
+                ${cancelBtnHtml}
+              </div>
+            </div>
+            <div class="job-progress-bar">
+              <div class="job-progress-fill" style="width: ${job.progress_percentage}%"></div>
+            </div>
           </div>
-          <div class="job-progress-bar">
-            <div class="job-progress-fill" style="width: ${job.progress_percentage}%"></div>
-          </div>
-        </div>
-      `)
+        `;
+      })
       .join("");
   } catch {
     // Offline

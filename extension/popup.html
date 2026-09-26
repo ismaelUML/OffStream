@@ -29,9 +29,17 @@
           <button id="btn-paste" class="btn-icon" title="Paste from clipboard">📋</button>
         </div>
 
+        <div class="quality-row">
+          <label for="quality-select" class="quality-label">Video Quality:</label>
+          <select id="quality-select" class="quality-select">
+            <option value="best" selected>1080p+ (Best)</option>
+            <option value="720p">720p (Fast)</option>
+          </select>
+        </div>
+
         <div class="actions-grid">
           <button id="btn-download-video" class="btn btn-primary">
-            <span>🎬</span> Video (1080p+)
+            <span>🎬</span> Video
           </button>
           <button id="btn-download-audio" class="btn btn-secondary">
             <span>🎧</span> Audio (MP3)
@@ -41,7 +49,10 @@
 
       <div class="section-header">
         <h2>Active Pipeline Jobs</h2>
-        <button id="btn-refresh" class="btn-text">Refresh</button>
+        <div class="section-actions">
+          <button id="btn-clear" class="btn-text" title="Clear finished jobs">Clear</button>
+          <button id="btn-refresh" class="btn-text">Refresh</button>
+        </div>
       </div>
 
       <div id="jobs-list" class="jobs-list">
