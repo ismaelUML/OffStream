@@ -14,18 +14,20 @@ def select_best_audio_stream(formats: List[StreamFormat]) -> StreamFormat:
     return max(audio_candidates, key=_get_bitrate)
 
 
+def _resolve_quality_candidate(candidates: List[StreamFormat], quality: QualityTarget) -> Optional[StreamFormat]:
+    if quality == QualityTarget.P720:
+        return _find_720p_stream(candidates)
+    return None
+
+
 def select_video_stream(formats: List[StreamFormat], quality: QualityTarget) -> StreamFormat:
     # Si el usuario quiere 720p buscamos ese perfil; si no, le mandamos la resolución más bestia que haya
     video_candidates = [f for f in formats if f.is_video]
     if not video_candidates:
         raise StreamNotFoundError("No encontramos ninguna pista de video válida en la respuesta.")
 
-    if quality == QualityTarget.P720:
-        match = _find_720p_stream(video_candidates)
-        if match:
-            return match
-
-    return max(video_candidates, key=_get_bitrate)
+    match = _resolve_quality_candidate(video_candidates, quality)
+    return match if match else max(video_candidates, key=_get_bitrate)
 
 
 def _find_720p_stream(streams: List[StreamFormat]) -> Optional[StreamFormat]:

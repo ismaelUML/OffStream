@@ -28,6 +28,20 @@ class FastMediaDownloader(MediaDownloaderPort):
     def __init__(self, cookies_browser: Optional[str] = None) -> None:
         self._cookies_browser = cookies_browser
 
+    def _execute_ydl_with_fallback(self, ydl_opts: Dict[str, Any], targets: list) -> None:
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download(targets)
+        except Exception as err:
+            has_cookies = "cookiesfrombrowser" in ydl_opts or "cookiefile" in ydl_opts
+            if is_cookie_error(err) and has_cookies:
+                ydl_opts.pop("cookiesfrombrowser", None)
+                ydl_opts.pop("cookiefile", None)
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download(targets)
+            else:
+                raise
+
     def download_stream(
         self,
         stream: StreamFormat,
@@ -42,18 +56,7 @@ class FastMediaDownloader(MediaDownloaderPort):
             raise StreamNotFoundError("yt-dlp is not available.")
 
         ydl_opts = self._build_opts(output_path, progress_callback, is_cancelled)
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([stream.url])
-        except Exception as err:
-            if is_cookie_error(err) and ("cookiesfrombrowser" in ydl_opts or "cookiefile" in ydl_opts):
-                ydl_opts.pop("cookiesfrombrowser", None)
-                ydl_opts.pop("cookiefile", None)
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([stream.url])
-            else:
-                raise
-
+        self._execute_ydl_with_fallback(ydl_opts, [stream.url])
         return output_path
 
     def download_direct(
@@ -70,20 +73,7 @@ class FastMediaDownloader(MediaDownloaderPort):
             raise StreamNotFoundError("yt-dlp is not available.")
 
         ydl_opts = self._build_direct_opts(output_path, is_audio, quality, progress_callback, is_cancelled)
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-        except Exception as err:
-            # Si Chrome tiene bloqueada su base de datos o falló la extracción de cookies,
-            # reintentamos sin cookies de forma transparente para que la descarga no explote.
-            if is_cookie_error(err) and ("cookiesfrombrowser" in ydl_opts or "cookiefile" in ydl_opts):
-                ydl_opts.pop("cookiesfrombrowser", None)
-                ydl_opts.pop("cookiefile", None)
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
-            else:
-                raise
-
+        self._execute_ydl_with_fallback(ydl_opts, [url])
         return output_path
 
     def _build_opts(

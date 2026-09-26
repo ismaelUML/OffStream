@@ -1,13 +1,13 @@
 from pathlib import Path
+import pytest
 from adapters.out_bound.sqlite_history import SqliteHistoryAdapter
 from domain.models import DownloadRecord
 
 
-def test_sqlite_history_crud(tmp_path: Path):
+@pytest.fixture
+def history_adapter(tmp_path: Path):
     db_file = tmp_path / "test_history.db"
     adapter = SqliteHistoryAdapter(str(db_file))
-
-    # 1. Agregar registros
     rec1 = DownloadRecord(
         id=None,
         video_id="abc12345678",
@@ -28,19 +28,21 @@ def test_sqlite_history_crud(tmp_path: Path):
         file_path="C:/Downloads/Bohemian Rhapsody.mp4",
         media_kind="video",
     )
-
     id1 = adapter.add_record(rec1)
     id2 = adapter.add_record(rec2)
-    assert id1 > 0
-    assert id2 > id1
+    return adapter, id1, id2
 
-    # 2. Listar todos
+
+def test_sqlite_history_insert_and_order(history_adapter):
+    adapter, id1, id2 = history_adapter
     all_recs = adapter.list_records()
     assert len(all_recs) == 2
-    assert all_recs[0].id == id2  # ORDER BY id DESC
+    assert all_recs[0].id == id2
     assert all_recs[1].id == id1
 
-    # 3. Buscar por query (título y canal)
+
+def test_sqlite_history_search(history_adapter):
+    adapter, _, _ = history_adapter
     search_daft = adapter.list_records(query="Daft")
     assert len(search_daft) == 1
     assert search_daft[0].video_id == "abc12345678"
@@ -52,12 +54,16 @@ def test_sqlite_history_crud(tmp_path: Path):
     search_none = adapter.list_records(query="Inexistente")
     assert len(search_none) == 0
 
-    # 4. Eliminar un registro
+
+def test_sqlite_history_delete(history_adapter):
+    adapter, id1, _ = history_adapter
     deleted = adapter.delete_record(id1)
     assert deleted is True
     assert len(adapter.list_records()) == 1
 
-    # 5. Limpiar todo
+
+def test_sqlite_history_clear(history_adapter):
+    adapter, _, _ = history_adapter
     cleared = adapter.clear_all()
-    assert cleared == 1
+    assert cleared == 2
     assert len(adapter.list_records()) == 0

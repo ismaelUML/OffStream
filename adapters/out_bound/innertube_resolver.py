@@ -92,6 +92,14 @@ class InnerTubeResolver:
 
         return extracted
 
+    @staticmethod
+    def _detect_extension(mime_type: str, is_audio: bool) -> str:
+        if is_audio and "mp4" in mime_type:
+            return "m4a"
+        if "webm" in mime_type:
+            return "webm"
+        return "mp4"
+
     def _parse_single_item(self, item: Dict[str, Any]) -> Optional[StreamFormat]:
         direct_url = item.get("url")
         if not direct_url:
@@ -100,7 +108,7 @@ class InnerTubeResolver:
         mime_type = item.get("mimeType", "")
         is_audio = "audio" in mime_type
         is_video = "video" in mime_type
-        ext = "m4a" if is_audio and "mp4" in mime_type else ("webm" if "webm" in mime_type else "mp4")
+        ext = self._detect_extension(mime_type, is_audio)
 
         return StreamFormat(
             format_id=str(item.get("itag", "unknown")),

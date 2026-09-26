@@ -78,41 +78,40 @@ def test_list_and_cancel_jobs_endpoints():
     assert "test_api_1" not in manager._jobs
 
 
-def test_history_endpoints():
+@pytest.fixture
+def seeded_history_record():
     from domain.models import DownloadRecord
-    # Seed a record into manager's history repo
-    if manager._history_repo:
-        rec = DownloadRecord(
-            id=None,
-            video_id="hist123",
-            title="Daft Punk - One More Time",
-            channel="Daft Punk",
-            duration_seconds=320,
-            created_at="2026-09-25T12:00:00",
-            file_path="C:/nonexistent/path/song.mp3",
-            media_kind="audio",
-        )
-        rec_id = manager._history_repo.add_record(rec)
-        assert rec_id > 0
+    rec = DownloadRecord(
+        id=None,
+        video_id="hist123",
+        title="Daft Punk - One More Time",
+        channel="Daft Punk",
+        duration_seconds=320,
+        created_at="2026-09-25T12:00:00",
+        file_path="C:/nonexistent/path/song.mp3",
+        media_kind="audio",
+    )
+    return manager._history_repo.add_record(rec)
 
-        # Query history
-        res = client.get("/api/history?query=Daft")
-        assert res.status_code == 200
-        data = res.json()
-        assert len(data) >= 1
-        assert any(r["video_id"] == "hist123" for r in data)
-        # file does not exist on disk
-        matched = next(r for r in data if r["video_id"] == "hist123")
-        assert matched["file_exists"] is False
 
-        # Open non-existent file returns 410 Gone
-        res_open = client.post(f"/api/history/{rec_id}/open")
-        assert res_open.status_code == 410
+def test_history_query_and_file_status(seeded_history_record):
+    res = client.get("/api/history?query=Daft")
+    assert res.status_code == 200
+    data = res.json()
+    matched = next((r for r in data if r["video_id"] == "hist123"), None)
+    assert matched is not None
+    assert matched["file_exists"] is False
 
-        # Delete history record
-        res_del = client.delete(f"/api/history/{rec_id}")
-        assert res_del.status_code == 200
-        assert res_del.json()["status"] == "ok"
+
+def test_history_open_missing_file_410(seeded_history_record):
+    res_open = client.post(f"/api/history/{seeded_history_record}/open")
+    assert res_open.status_code == 410
+
+
+def test_history_delete_endpoint(seeded_history_record):
+    res_del = client.delete(f"/api/history/{seeded_history_record}")
+    assert res_del.status_code == 200
+    assert res_del.json()["status"] == "ok"
 
 
 @pytest.mark.anyio

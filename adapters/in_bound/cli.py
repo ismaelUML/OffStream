@@ -39,7 +39,7 @@ def build_default_manager(
 
 
 
-def run_cli() -> None:
+def _build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="yt-global-dl: Clean, local YouTube media pipeline.")
     parser.add_argument("url", help="YouTube video URL or Video ID")
     parser.add_argument(
@@ -65,17 +65,42 @@ def run_cli() -> None:
         default=None,
         help="Extract session cookies directly from your local browser",
     )
+    return parser
 
+
+def _print_inspected_video(info) -> None:
+    print(f"\n[Title]     : {info.clean_title}")
+    print(f"[Channel]   : {info.uploader}")
+    print(f"[Duration]  : {info.duration_seconds} seconds")
+    print(f"[Streams]   : {len(info.formats)} formats discovered\n")
+
+
+def _monitor_job_progress(job) -> None:
+    last_progress = -1.0
+    while job.status not in (JobStatus.COMPLETED, JobStatus.FAILED):
+        time.sleep(0.5)
+        if int(job.progress_percentage) != int(last_progress):
+            last_progress = job.progress_percentage
+            status_str = f"[{job.status.value.upper()}] {job.progress_percentage:.1f}%"
+            sys.stdout.write(f"\r{status_str}")
+            sys.stdout.flush()
+
+    sys.stdout.write("\n")
+    if job.status == JobStatus.COMPLETED:
+        print(f"[SUCCESS] Download Finished! Saved to: {job.output_path}\n")
+    else:
+        print(f"[FAILED] Download Failed: {job.error_message}\n")
+
+
+def run_cli() -> None:
+    parser = _build_argument_parser()
     args = parser.parse_args()
     manager = build_default_manager(cookies_browser=args.cookies_browser)
 
     try:
         if args.inspect:
             info = manager.inspect_video(args.url)
-            print(f"\n[Title]     : {info.clean_title}")
-            print(f"[Channel]   : {info.uploader}")
-            print(f"[Duration]  : {info.duration_seconds} seconds")
-            print(f"[Streams]   : {len(info.formats)} formats discovered\n")
+            _print_inspected_video(info)
             return
 
         kind = MediaKind.AUDIO if args.audio else MediaKind.VIDEO
@@ -88,23 +113,7 @@ def run_cli() -> None:
 
         print(f"\n[+] Queueing download for: {args.url} ({kind.value.upper()})")
         job = manager.queue_download(args.url, kind, target_quality)
-
-        last_progress = -1.0
-        while job.status not in (JobStatus.COMPLETED, JobStatus.FAILED):
-            time.sleep(0.5)
-            if int(job.progress_percentage) != int(last_progress):
-                last_progress = job.progress_percentage
-                status_str = f"[{job.status.value.upper()}] {job.progress_percentage:.1f}%"
-                sys.stdout.write(f"\r{status_str}")
-                sys.stdout.flush()
-
-        sys.stdout.write("\n")
-        if job.status == JobStatus.COMPLETED:
-            print(f"[SUCCESS] Download Finished! Saved to: {job.output_path}\n")
-        else:
-            print(f"[FAILED] Download Failed: {job.error_message}\n")
-
-
+        _monitor_job_progress(job)
     except KeyboardInterrupt:
         print("\nOperation cancelled by user.")
     except Exception as err:
