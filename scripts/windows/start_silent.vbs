@@ -3,5 +3,7 @@
 ' WScript.Shell.Run con parámetro 0 es la única forma que tiene Windows
 ' de levantar un proceso 100% invisible en segundo plano sin asustar al usuario.
 Set WshShell = CreateObject("WScript.Shell")
-WshShell.CurrentDirectory = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
+Set fso = CreateObject("Scripting.FileSystemObject")
+projectRoot = fso.GetParentFolderName(fso.GetParentFolderName(WScript.ScriptFullName))
+WshShell.CurrentDirectory = projectRoot
 WshShell.Run "pythonw.exe main.py", 0, False

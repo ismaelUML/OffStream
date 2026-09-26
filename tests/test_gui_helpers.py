@@ -1,4 +1,4 @@
-from gui import _compute_pipeline_display, _format_duration, _truncate_title
+from adapters.in_bound.gui import _compute_pipeline_display, _format_duration, _truncate_title
 
 
 def test_format_duration():

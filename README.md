@@ -47,7 +47,7 @@ python main.py
 ```
 
 > [!TIP]
-> For invisible background execution without an open terminal window, double-click `start_silent.vbs` (or run `install_autostart.bat` to launch on Windows boot).
+> For invisible background execution without an open terminal window, double-click `scripts/windows/start_silent.vbs` (or run `scripts/windows/install_autostart.bat` to launch on Windows boot).
 
 ---
 
@@ -55,13 +55,14 @@ python main.py
 
 ### 1. Browser Extension (Chrome / Edge / Brave)
 1. Open `chrome://extensions/` and enable **Developer mode**.
-2. Click **Load unpacked** and select the `extension/` directory.
+2. Click **Load unpacked** and select the `clients/browser-extension/` directory.
 3. Pin **OffStream** to your toolbar.
 4. On any YouTube or YouTube Music video, click the toolbar icon: the active URL is detected automatically. Click **Video** or **Audio (MP3)**. Progress streams live via SSE.
 
 ### 2. Desktop GUI (CustomTkinter)
 ```bash
-python gui.py
+python main.py --gui
+# or: python -m adapters.in_bound.gui
 ```
 Or double-click `Launch_Dashboard.bat`.
 - **Tab "⬇ Descargas"**: Paste any URL, select quality (1080p+, MP3, 720p), view live progress, and manage the daemon lifecycle.
@@ -86,9 +87,28 @@ All downloads are organized in `Downloads/yt-global-dl/{videos,music}`.
 
 ---
 
-## Architecture
+## Architecture & Project Structure
 
 OffStream follows strict **Hexagonal Architecture (Ports and Adapters)** principles to maintain high cohesion and absolute testability:
+
+```text
+yt-global-dl/
+├── .github/
+│   └── workflows/ci.yml           # Automated Windows CI (Pytest + Radon Rank A audit)
+├── domain/                        # Pure models (dataclasses) & business exceptions (Zero deps)
+├── ports/                         # Abstract Protocol interfaces (in_bound, out_bound)
+├── core/                          # Domain orchestrators (DownloadManager, circuit breaker, etc.)
+├── adapters/                      # Concrete technology drivers & driven components
+│   ├── in_bound/                  # Driving adapters: cli.py, server.py, gui.py
+│   └── out_bound/                 # Driven adapters: ytdlp, ffmpeg, sqlite, cookies, etc.
+├── clients/
+│   └── browser-extension/         # Manifest V3 extension (Chrome / Edge / Brave)
+├── scripts/
+│   └── windows/                   # Platform background daemons & autostart automation
+├── tests/                         # Pytest test suite (100% pass rate)
+├── main.py                        # Unified CLI / Daemon / GUI bootstrapper
+└── Launch_Dashboard.bat           # 1-Click desktop launcher
+```
 
 ```mermaid
 graph TD
@@ -122,7 +142,8 @@ graph TD
 - **Domain (`domain/`)**: Pure Python standard library dataclasses (`DownloadJob`, `DownloadRecord`, `StreamFormat`). Zero external imports.
 - **Ports (`ports/`)**: Interfaces defined using `typing.Protocol` (`StreamResolverPort`, `MediaDownloaderPort`, `MediaProcessorPort`, `StoragePort`, `HistoryRepositoryPort`).
 - **Core (`core/`)**: Orchestration services. Enforces Little's Law with bounded concurrency (3 parallel workers, max 25 queue capacity), socket cancellation hooks, and circuit-breaker failover.
-- **Adapters (`adapters/`)**: Concrete implementations (FastAPI server, CLI parser, SQLite history database, yt-dlp direct downloader, imageio FFmpeg wrapper).
+- **Adapters (`adapters/`)**: Concrete implementations (FastAPI server, CLI parser, Desktop GUI, SQLite history database, yt-dlp direct downloader, imageio FFmpeg wrapper).
+- **Clients (`clients/`)**: Browser companion extensions interacting through the local HTTP/SSE interface.
 
 ---
 
@@ -135,9 +156,9 @@ Code quality is monitored using [Radon](https://radon.readthedocs.io/):
 | **Domain** | `models.py`, `exceptions.py` | **1.04** | 2 | **100.0 (Rank A)** |
 | **Ports** | `in_bound.py`, `out_bound.py` | **1.22** | 2 | **100.0 (Rank A)** |
 | **Core** | `download_manager.py`, `circuit_breaker.py`, `stream_selector.py`, `title_cleaner.py`, `url_parser.py` | **2.97** | 5 | **78.9 (Rank A)** |
-| **Adapters** | `server.py`, `cli.py`, `sqlite_history.py`, `fast_downloader.py`, `ytdlp_resolver.py`, `cookies_helper.py`, `ffmpeg_processor.py` | **2.61** | 5 | **63.4 (Rank A)** |
-| **Desktop GUI** | `gui.py` | **2.31** | 5 | **32.0 (Rank A)** |
-| **Overall Production** | **All 26 Python Modules** | **2.38 (Rank A)** | **5 (Rank A)** | **100% Rank A** |
+| **Adapters** | `server.py`, `cli.py`, `gui.py`, `sqlite_history.py`, `fast_downloader.py`, `ytdlp_resolver.py`, `cookies_helper.py`, `ffmpeg_processor.py` | **2.39** | 5 | **63.4 (Rank A)** |
+| **Bootstrapper** | `main.py` | **3.00** | 4 | **72.0 (Rank A)** |
+| **Overall Production** | **All 26 Python Modules** | **2.19 (Rank A)** | **5 (Rank A)** | **100% Rank A** |
 
 > [!NOTE]
 > Every single production function has a Cyclomatic Complexity $\le 5$, adhering to strict Single Responsibility and Clean Code standards.
@@ -155,8 +176,8 @@ python -m pytest tests/ -v
 Run static complexity and maintainability audits:
 
 ```bash
-python -m radon cc domain ports core adapters gui.py main.py -s -a
-python -m radon mi domain ports core adapters gui.py main.py -s
+python -m radon cc domain ports core adapters main.py -s -a
+python -m radon mi domain ports core adapters main.py -s
 ```
 
 ---

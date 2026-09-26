@@ -570,6 +570,11 @@ class YtGlobalDlApp(ctk.CTk):
             pass
 
 
-if __name__ == "__main__":
+def launch_gui():
+    """Launch the CustomTkinter desktop companion application."""
     app = YtGlobalDlApp()
     app.mainloop()
+
+
+if __name__ == "__main__":
+    launch_gui()

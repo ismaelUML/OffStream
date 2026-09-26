@@ -15,12 +15,23 @@ if sys.stderr is None:
 
 import traceback
 
-def main():
+def _dispatch_mode(args: list) -> None:
+    if not args:
+        start_server()
+        return
+    mode = args[0]
+    if mode == "--gui":
+        from adapters.in_bound.gui import launch_gui
+        launch_gui()
+    elif mode == "--daemon":
+        start_server()
+    else:
+        run_cli()
+
+
+def main() -> None:
     try:
-        if len(sys.argv) > 1 and sys.argv[1] != "--daemon":
-            run_cli()
-        else:
-            start_server()
+        _dispatch_mode(sys.argv[1:])
     except Exception:
         with open("daemon_crash.log", "a") as f:
             traceback.print_exc(file=f)

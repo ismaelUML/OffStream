@@ -33,8 +33,8 @@ jobs:
 
       - name: Verify Cyclomatic Complexity (Radon Rank A)
         run: |
-          python -m radon cc domain ports core adapters gui.py main.py -s -a
+          python -m radon cc domain ports core adapters main.py -s -a
 
       - name: Verify Maintainability Index (Radon Rank A)
         run: |
-          python -m radon mi domain ports core adapters gui.py main.py -s
+          python -m radon mi domain ports core adapters main.py -s
