@@ -9,4 +9,7 @@ downloads/
 *.part
 *.ytdl
 *.log
-
+.coverage
+coverage.xml
+coverage/
+.scannerwork/
