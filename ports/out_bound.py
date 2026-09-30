@@ -2,7 +2,7 @@
 Following Interface Segregation Principle (ISP) and Dependency Inversion Principle (DIP).
 """
 from typing import Callable, List, Optional, Protocol
-from domain.models import DownloadRecord, StreamFormat, VideoMetadata
+from domain.models import DownloadRecord, QualityTarget, StreamFormat, VideoMetadata
 
 
 class StreamResolverPort(Protocol):
@@ -24,6 +24,8 @@ CancellationCheck = Callable[[], bool]
 class MediaDownloaderPort(Protocol):
     """Port for streaming bytes from remote servers."""
 
+    can_download_direct: bool = False
+
     def download_stream(
         self,
         stream: StreamFormat,
@@ -31,6 +33,18 @@ class MediaDownloaderPort(Protocol):
         progress_callback: Optional[ProgressCallback] = None,
     ) -> str:
         """Download raw stream data to disk."""
+        ...
+
+    def download_direct(
+        self,
+        url: str,
+        output_path: str,
+        is_audio: bool = False,
+        quality: QualityTarget = QualityTarget.BEST,
+        progress_callback: Optional[ProgressCallback] = None,
+        is_cancelled: Optional[CancellationCheck] = None,
+    ) -> str:
+        """Direct line download when accelerated engine is available."""
         ...
 
 

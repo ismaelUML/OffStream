@@ -242,7 +242,7 @@ class DownloadManager(DownloadUseCasePort):
         dest_path = self._storage.get_output_path(f"{metadata.clean_title}.mp3", is_audio=True)
         # Si el downloader tiene la ruta rápida acelerada directa, la usamos de cabeza.
         # Nos ahorra tener que bajar el archivo temporal a mano y llamar a ffmpeg por separado.
-        if hasattr(self._downloader, "download_direct"):
+        if getattr(self._downloader, "can_download_direct", False):
             try:
                 return self._downloader.download_direct(
                     job.source_url,
@@ -272,7 +272,7 @@ class DownloadManager(DownloadUseCasePort):
     def _process_video_pipeline(self, job: DownloadJob, metadata: VideoMetadata) -> str:
         dest_path = self._storage.get_output_path(f"{metadata.clean_title}.mp4", is_audio=False)
         # Mismo caso: la ruta rápida directa descarga fragments paralelos y une con ffmpeg en 2 segundos.
-        if hasattr(self._downloader, "download_direct"):
+        if getattr(self._downloader, "can_download_direct", False):
             try:
                 return self._downloader.download_direct(
                     job.source_url,

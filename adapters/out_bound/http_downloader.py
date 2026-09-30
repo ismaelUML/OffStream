@@ -6,7 +6,7 @@ from typing import Optional
 import requests
 from domain.exceptions import StreamNotFoundError
 from domain.models import StreamFormat
-from ports.out_bound import ProgressCallback
+from ports.out_bound import MediaDownloaderPort, ProgressCallback
 
 _CHUNK_SIZE = 1024 * 1024  # 1 MB chunks
 _USER_AGENT = (
@@ -15,8 +15,10 @@ _USER_AGENT = (
 )
 
 
-class HttpStreamingDownloader:
+class HttpStreamingDownloader(MediaDownloaderPort):
     """Streams video and audio bytes directly from remote CDNs."""
+
+    can_download_direct: bool = False
 
     def __init__(self, timeout: int = 30) -> None:
         self._session = requests.Session()

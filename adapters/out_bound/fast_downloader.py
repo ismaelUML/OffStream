@@ -25,6 +25,8 @@ from .cookies_helper import is_cookie_error, resolve_cookie_opts
 
 
 class FastMediaDownloader(MediaDownloaderPort):
+    can_download_direct: bool = True
+
     def __init__(self, cookies_browser: Optional[str] = None) -> None:
         self._cookies_browser = cookies_browser
 
