@@ -1,0 +1,13 @@
+[run]
+branch = True
+omit =
+    main.py
+    adapters/in_bound/gui.py
+    adapters/in_bound/cli.py
+    scripts/*
+    clients/*
+    tests/*
+
+[report]
+show_missing = True
+precision = 2
