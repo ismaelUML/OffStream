@@ -7,11 +7,11 @@ import subprocess
 import sys
 import threading
 import time
+import json
 from pathlib import Path
 from typing import List, Optional
 import customtkinter as ctk
 import requests
-from adapters.out_bound.sqlite_history import SqliteHistoryAdapter
 from domain.models import DownloadRecord
 
 API_BASE = "http://127.0.0.1:8765"
@@ -80,11 +80,9 @@ class YtGlobalDlApp(ctk.CTk):
         self._downloads_dir = Path.home() / "Downloads" / "yt-global-dl"
         self._video_dir = self._downloads_dir / "videos"
         self._music_dir = self._downloads_dir / "music"
-        self._history_adapter = SqliteHistoryAdapter()
-
         self._build_ui()
         self._refresh_library()
-        self._start_status_poller()
+        self._start_sse_listener()
 
     def _build_ui(self):
         # Header Frame
@@ -306,12 +304,36 @@ class YtGlobalDlApp(ctk.CTk):
         query = self.search_entry.get().strip() if hasattr(self, "search_entry") else None
         self._load_history_view(query=query if query else None)
 
+    def _fetch_history(self, query: Optional[str] = None) -> List[DownloadRecord]:
+        try:
+            params = {"limit": 100}
+            if query:
+                params["query"] = query
+            res = requests.get(f"{API_BASE}/api/history", params=params, timeout=1.5)
+            if res.status_code == 200:
+                return [
+                    DownloadRecord(
+                        id=r["id"],
+                        video_id=r["video_id"],
+                        title=r["title"],
+                        channel=r["channel"],
+                        duration_seconds=r["duration_seconds"],
+                        created_at=r["created_at"],
+                        file_path=r["file_path"],
+                        media_kind=r.get("media_kind", "video"),
+                    )
+                    for r in res.json()
+                ]
+        except Exception:
+            pass
+        return []
+
     def _load_history_view(self, query: Optional[str] = None):
         # Limpiamos los widgets previos
         for widget in self.history_scroll.winfo_children():
             widget.destroy()
 
-        records = self._history_adapter.list_records(limit=100, query=query)
+        records = self._fetch_history(query=query)
         self.history_footer.configure(text=f"Mostrando {len(records)} descargas en biblioteca")
 
         if not records:
@@ -435,7 +457,10 @@ class YtGlobalDlApp(ctk.CTk):
 
     def _delete_record(self, record_id: Optional[int]):
         if record_id:
-            self._history_adapter.delete_record(record_id)
+            try:
+                requests.delete(f"{API_BASE}/api/history/{record_id}", timeout=2.0)
+            except Exception:
+                pass
             self._refresh_library()
 
     def _paste_clipboard(self):
@@ -499,19 +524,71 @@ class YtGlobalDlApp(ctk.CTk):
         except Exception:
             return False
 
-    def _start_status_poller(self):
-        self._poll_status_cycle()
+    def _start_sse_listener(self):
+        """Streaming reactivo mediante Server-Sent Events (SSE).
+        Sustituye el polling repetitivo por un socket persistente que
+        empuja actualizaciones de progreso en tiempo real sin saturar la red ni la CPU.
+        """
+        self._sse_running = True
+        threading.Thread(target=self._sse_event_loop, daemon=True).start()
 
-    def _poll_status_cycle(self):
+    def _sse_event_loop(self):
+        while getattr(self, "_sse_running", True):
+            try:
+                with requests.get(f"{API_BASE}/api/events", stream=True, timeout=(3.0, None)) as resp:
+                    if resp.status_code == 200:
+                        self.after(0, lambda: self._update_status(True))
+                        self.after(0, self._refresh_library)
+                        self._consume_sse_stream(resp)
+                    else:
+                        self.after(0, lambda: self._update_status(False))
+            except Exception:
+                self.after(0, lambda: self._update_status(False))
+            time.sleep(2.0)
+
+    def _is_valid_event_line(self, line: Optional[str]) -> bool:
+        return bool(line and not line.startswith(":"))
+
+    def _consume_sse_stream(self, resp: requests.Response) -> None:
+        for line in resp.iter_lines(decode_unicode=True):
+            if not getattr(self, "_sse_running", True):
+                break
+            if self._is_valid_event_line(line) and line.startswith("data: "):
+                self._handle_sse_payload(line[6:])
+
+    def _handle_sse_payload(self, raw_data: str) -> None:
         try:
-            online = self._check_daemon_health()
-            self._update_status(online)
-            if online:
-                self._poll_jobs_status()
+            payload = json.loads(raw_data)
+            evt_type = payload.get("type")
+            if evt_type == "connected":
+                self.after(0, lambda: self._update_status(True))
+            elif evt_type == "job_update":
+                self.after(0, lambda: self._process_streamed_job(payload))
         except Exception:
             pass
-        finally:
-            self.after(1500, self._poll_status_cycle)
+
+    def _process_streamed_job(self, job: dict) -> None:
+        status = job.get("status", "pending")
+        pct = float(job.get("progress_percentage", 0.0))
+        if status in ("pending", "resolving", "downloading", "muxing"):
+            self.progress_bar.set(pct / 100.0)
+            self.progress_label.configure(
+                text=f"[{status.upper()}] {pct:.0f}%",
+                text_color="#60a5fa",
+            )
+        elif status == "completed":
+            self.progress_bar.set(1.0)
+            self.progress_label.configure(
+                text=f"✓ Download Finished: {job.get('job_id')}",
+                text_color="#34d399",
+            )
+            self._refresh_library()
+        elif status == "failed":
+            self.progress_bar.set(1.0)
+            self.progress_label.configure(
+                text=f"✗ Error: {job.get('error_message')}",
+                text_color="#f87171",
+            )
 
     def _update_status(self, is_online: bool):
         if is_online:
@@ -571,20 +648,7 @@ class YtGlobalDlApp(ctk.CTk):
 
         threading.Thread(target=_do_submit, daemon=True).start()
 
-    def _poll_jobs_status(self):
-        try:
-            r = requests.get(f"{API_BASE}/api/jobs", timeout=2)
-            if r.status_code != 200:
-                return
 
-            jobs = r.json()
-            progress, text, color = _compute_pipeline_display(jobs, self.progress_bar.get() > 0)
-            self.progress_bar.set(progress)
-            self.progress_label.configure(text=text, text_color=color)
-            if any(j.get("status") == "completed" for j in jobs):
-                self._refresh_library()
-        except Exception:
-            pass
 
 
 def launch_gui():
