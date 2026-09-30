@@ -2,8 +2,8 @@
 Implements StreamResolverPort as a robust secondary engine with dynamic cipher solving.
 """
 from typing import Any, Dict, List, Optional
-from core.title_cleaner import clean_title
-from core.url_parser import build_canonical_url, extract_video_id
+from domain.title_cleaner import clean_title
+from domain.url_parser import build_canonical_url, extract_video_id
 from domain.exceptions import ResolutionError
 from domain.models import StreamFormat, VideoMetadata
 

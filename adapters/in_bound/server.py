@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from domain.models import MediaKind, QualityTarget
-from .cli import build_default_manager
+from bootstrap import build_default_manager
 
 # Si arrancamos con pythonw.exe en segundo plano, Windows deja sys.stdout y stderr como None.
 # Si uvicorn o cualquier print intenta escupir algo sin esto, explota con un AttributeError ridículo.
