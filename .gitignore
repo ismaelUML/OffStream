@@ -13,3 +13,7 @@ downloads/
 coverage.xml
 coverage/
 .scannerwork/
+dist/
+build/
+*.spec
+

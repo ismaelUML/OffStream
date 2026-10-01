@@ -17,9 +17,14 @@ if sys.stderr is None:
 
 
 def _dispatch_mode(args: list) -> None:
-    # Si no vienen argumentos (ej: doble click en un script o arranque automático de Windows),
-    # levantamos el daemon por defecto para que la extensión de Chrome tenga backend listo.
+    # Si no vienen argumentos (ej: doble click en OffStream.exe o script de inicio):
+    # Si estamos empaquetados como binario congelado, abrimos la GUI de escritorio directamente.
+    # Si se ejecuta como script sin argumentos en desarrollo, levanta el daemon para la extensión.
     if not args:
+        if getattr(sys, "frozen", False):
+            from adapters.in_bound.gui import launch_gui
+            launch_gui()
+            return
         start_server()
         return
     mode = args[0]

@@ -23,11 +23,18 @@ def check_daemon_health(api_base: str = API_BASE) -> bool:
 
 def start_daemon_process() -> None:
     """Arranca el daemon en segundo plano suprimiendo la consola negra de Windows."""
+    # En modo congelado (.exe), sys.executable ya es OffStream.exe; le pasamos --daemon directamente.
+    if getattr(sys, "frozen", False):
+        subprocess.Popen(
+            [sys.executable, "--daemon"],
+            creationflags=0x08000000,
+        )
+        return
     repo_root = Path(__file__).resolve().parents[2]
     main_script = str(repo_root / "main.py")
     # Flag 0x08000000 (CREATE_NO_WINDOW) para no espantar al usuario con un flash de cmd.exe
     subprocess.Popen(
-        [sys.executable, main_script],
+        [sys.executable, main_script, "--daemon"],
         cwd=str(repo_root),
         creationflags=0x08000000,
     )

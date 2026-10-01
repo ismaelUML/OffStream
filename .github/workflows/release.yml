@@ -1,0 +1,48 @@
+name: Build & Release Portable Windows Executable
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    name: Build OffStream Windows Portable (.exe)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python Runtime
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Build Dependencies
+        run: |
+          python scripts/install_deps.py
+          pip install --only-binary :all: pyinstaller==6.12.0
+
+      - name: Compile Standalone Executable
+        run: |
+          python scripts/build_windows_exe.py
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: OffStream-Windows-Portable
+          path: dist/OffStream-Windows-Portable.zip
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87238604da99376a6cb63 # v2.2.1
+        with:
+          files: dist/OffStream-Windows-Portable.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

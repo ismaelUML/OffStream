@@ -28,7 +28,15 @@ Online converters (`y2mate`, `savefrom`) are plagued with malicious redirects, s
 
 ## Quick Start
 
-### 1. Requirements & Setup
+### 🚀 Standalone Portable Release (Zero Setup)
+No Python installation or command-line required.
+1. Download **`OffStream-Windows-Portable.zip`** from [Releases](https://github.com/ismaelUML/OffStream/releases).
+2. Extract the folder anywhere on your computer.
+3. Double-click **`OffStream.exe`** to start.
+
+---
+
+### 💻 Developer Setup
 Requires **Python 3.11+** on Windows 10/11 (FFmpeg is automatically bundled via `imageio-ffmpeg`).
 
 ```bash
@@ -107,9 +115,12 @@ yt-global-dl/
 ├── clients/
 │   └── browser-extension/         # Manifest V3 extension (Chrome / Edge / Brave)
 ├── scripts/
+│   ├── build_windows_exe.py       # Deterministic PyInstaller standalone bundler
+│   ├── install_deps.py            # Hardened binary dependency installer
 │   └── windows/                   # Platform background daemons & autostart automation
 ├── tests/                         # Pytest test suite (100% pass rate)
 ├── main.py                        # Unified CLI / Daemon / GUI bootstrapper
+├── Build_Release.bat              # 1-Click compiler for standalone OffStream.exe
 ├── Start_OffStream.bat            # Fail-safe 1-Click desktop launcher (auto-healing & Python detect)
 └── Launch_Dashboard.bat           # Desktop dashboard launcher
 ```
