@@ -1,18 +1,19 @@
 # Core Backend & API
-fastapi>=0.100.0
-uvicorn>=0.22.0
-pydantic>=2.0.0
-requests>=2.28.0
+fastapi==0.115.5
+uvicorn==0.32.1
+pydantic==2.10.3
+requests==2.32.3
 
 # Media Engines & Bundled Binaries
-yt-dlp>=2024.0.0
-imageio-ffmpeg>=0.4.9
+yt-dlp==2024.12.13
+imageio-ffmpeg==0.5.1
 
 # Desktop Dashboard UI
-customtkinter>=5.2.0
+customtkinter==5.2.2
 
 # Testing & Quality Metrics
-pytest>=7.4.0
-pytest-cov>=4.1.0
-radon>=6.0.1
-httpx>=0.24.0
+pytest==8.3.4
+pytest-cov==6.0.0
+radon==6.0.1
+httpx==0.28.1
+anyio==4.7.0
