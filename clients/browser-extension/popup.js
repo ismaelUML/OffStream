@@ -67,10 +67,23 @@ window.cancelJob = async function (jobId) {
   }
 };
 
+const toast = document.getElementById("toast");
+let toastTimeout = null;
+
+function showToast(message, type = "error") {
+  if (!toast) return;
+  toast.textContent = message;
+  toast.className = `toast ${type}`;
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => {
+    toast.className = "toast hidden";
+  }, 3500);
+}
+
 async function triggerDownload(kind, quality) {
   const url = urlInput.value.trim();
   if (!url) {
-    alert("Please enter a YouTube URL or Video ID");
+    showToast("Please enter a YouTube URL or Video ID", "error");
     return;
   }
 
@@ -83,14 +96,15 @@ async function triggerDownload(kind, quality) {
 
     if (!res.ok) {
       const err = await res.json();
-      alert(`Error: ${err.detail || "Failed to start download"}`);
+      showToast(`Error: ${err.detail || "Failed to start download"}`, "error");
       return;
     }
 
     urlInput.value = "";
+    showToast("Download job queued successfully!", "success");
     await refreshJobs();
   } catch {
-    alert("Could not connect to local daemon.\nRun 'python -m adapters.in_bound.server'");
+    showToast("Could not connect to local daemon. Run 'python -m adapters.in_bound.server'", "error");
   }
 }
 

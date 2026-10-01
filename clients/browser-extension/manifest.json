@@ -5,7 +5,8 @@
   "description": "Clean, virus-free local YouTube media downloader powered by Python Hexagonal core.",
   "permissions": [
     "activeTab",
-    "storage"
+    "storage",
+    "clipboardRead"
   ],
   "host_permissions": [
     "*://*.youtube.com/*",
