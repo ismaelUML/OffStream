@@ -14,13 +14,27 @@ except Exception:
     _BUNDLED_FFMPEG = None
 
 
+def _build_metadata_flags(title: str, artist: str) -> list:
+    # Incrustamos título y artista en los tags ID3 / MP4.
+    # Así Windows Explorer, el estéreo del auto o el reproductor del celu muestran
+    # la canción prolija y no un genérico 'Track 01 - Desconocido'.
+    flags = []
+    if title:
+        flags.extend(["-metadata", f"title={title}"])
+    if artist:
+        flags.extend(["-metadata", f"artist={artist}"])
+    return flags
+
+
 class FFmpegProcessorAdapter:
     def __init__(self, custom_binary: str = "") -> None:
         self._binary = custom_binary or _BUNDLED_FFMPEG or shutil.which("ffmpeg")
         if not self._binary:
             raise MuxingError("No encontramos FFmpeg en ningún rincón del sistema. Instala imageio-ffmpeg o ponlo en el PATH.")
 
-    def mux_video_audio(self, video_path: str, audio_path: str, output_path: str) -> str:
+    def mux_video_audio(
+        self, video_path: str, audio_path: str, output_path: str, title: str = "", artist: str = ""
+    ) -> str:
         # Copiamos el video bit por bit (-c:v copy) para que no tarde 15 minutos recomprimiendo.
         # El audio lo dejamos en AAC que es compatible hasta con televisores viejos.
         # -shortest es clave: YouTube a veces entrega pistas de audio y video con un desfase
@@ -34,12 +48,15 @@ class FFmpegProcessorAdapter:
             "-c:v", "copy",
             "-c:a", "aac",
             "-shortest",
-            output_path,
         ]
+        cmd.extend(_build_metadata_flags(title, artist))
+        cmd.append(output_path)
         self._run_command(cmd, "Falló la unión de pistas de video y audio.")
         return output_path
 
-    def convert_to_mp3(self, source_audio_path: str, output_path: str) -> str:
+    def convert_to_mp3(
+        self, source_audio_path: str, output_path: str, title: str = "", artist: str = ""
+    ) -> str:
         # Tiramos a la basura cualquier thumbnail o video (-vn) y sacamos MP3 a 192 kbps constantes.
         # 192k con libmp3lame es el punto dulce: suena idéntico a 320k pero pesa la mitad
         # y funciona en estéreos de autos viejos que no leen Opus ni AAC.
@@ -50,8 +67,9 @@ class FFmpegProcessorAdapter:
             "-vn",
             "-c:a", "libmp3lame",
             "-b:a", "192k",
-            output_path,
         ]
+        cmd.extend(_build_metadata_flags(title, artist))
+        cmd.append(output_path)
         self._run_command(cmd, "Falló la conversión del flujo a MP3.")
         return output_path
 

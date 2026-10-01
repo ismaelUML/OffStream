@@ -52,12 +52,16 @@ class MediaDownloaderPort(Protocol):
 class MediaProcessorPort(Protocol):
     """Port for multiplexing, transcoding, or tagging media files."""
 
-    def mux_video_audio(self, video_path: str, audio_path: str, output_path: str) -> str:
-        """Combine separate video and audio tracks into a unified MP4."""
+    def mux_video_audio(
+        self, video_path: str, audio_path: str, output_path: str, title: str = "", artist: str = ""
+    ) -> str:
+        """Combine separate video and audio tracks into a unified MP4 with optional metadata tags."""
         ...
 
-    def convert_to_mp3(self, source_audio_path: str, output_path: str) -> str:
-        """Transcode or remux an audio stream to standard MP3."""
+    def convert_to_mp3(
+        self, source_audio_path: str, output_path: str, title: str = "", artist: str = ""
+    ) -> str:
+        """Transcode or remux an audio stream to standard MP3 with optional metadata tags."""
         ...
 
 

@@ -35,10 +35,10 @@ class DummyDownloader:
 
 
 class DummyProcessor:
-    def mux_video_audio(self, video_path, audio_path, output_path):
+    def mux_video_audio(self, video_path, audio_path, output_path, title="", artist=""):
         return output_path
 
-    def convert_to_mp3(self, source_audio_path, output_path):
+    def convert_to_mp3(self, source_audio_path, output_path, title="", artist=""):
         return output_path
 
 

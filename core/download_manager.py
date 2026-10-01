@@ -270,7 +270,9 @@ class DownloadManager(DownloadUseCasePort):
                 is_cancelled=lambda: job.status == JobStatus.CANCELLED,
             )
             self._set_job_status(job, JobStatus.MUXING)
-            return self._processor.convert_to_mp3(temp_audio, dest_path)
+            return self._processor.convert_to_mp3(
+                temp_audio, dest_path, title=metadata.clean_title, artist=metadata.uploader
+            )
         finally:
             self._storage.remove_files([temp_audio])
 
@@ -309,7 +311,9 @@ class DownloadManager(DownloadUseCasePort):
                 is_cancelled=lambda: job.status == JobStatus.CANCELLED,
             )
             self._set_job_status(job, JobStatus.MUXING)
-            return self._processor.mux_video_audio(temp_video, temp_audio, dest_path)
+            return self._processor.mux_video_audio(
+                temp_video, temp_audio, dest_path, title=metadata.clean_title, artist=metadata.uploader
+            )
         finally:
             self._storage.remove_files([temp_video, temp_audio])
 

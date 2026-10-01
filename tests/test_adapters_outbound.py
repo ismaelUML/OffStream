@@ -34,12 +34,19 @@ def test_ffmpeg_processor_muxing():
         mock_proc.returncode = 0
         mock_run.return_value = mock_proc
 
-        out = processor.mux_video_audio("video.mp4", "audio.m4a", "output.mp4")
+        out = processor.mux_video_audio("video.mp4", "audio.m4a", "output.mp4", title="My Title", artist="My Artist")
         assert out == "output.mp4"
-        assert mock_run.called
+        cmd = mock_run.call_args[0][0]
+        assert "-metadata" in cmd
+        assert "title=My Title" in cmd
+        assert "artist=My Artist" in cmd
 
-        out_mp3 = processor.convert_to_mp3("audio.m4a", "output.mp3")
+        out_mp3 = processor.convert_to_mp3("audio.m4a", "output.mp3", title="Song", artist="Band")
         assert out_mp3 == "output.mp3"
+        cmd_mp3 = mock_run.call_args[0][0]
+        assert "-metadata" in cmd_mp3
+        assert "title=Song" in cmd_mp3
+        assert "artist=Band" in cmd_mp3
 
         mock_proc.returncode = 1
         mock_proc.stderr = "FFmpeg error message"
