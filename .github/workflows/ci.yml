@@ -25,7 +25,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install --only-binary :all: -r requirements.txt
+          python scripts/install_deps.py
 
       - name: Verify Cyclomatic Complexity Limits (CC <= 5)
         run: |
