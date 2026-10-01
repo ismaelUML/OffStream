@@ -4,9 +4,9 @@ Single Responsibility: Fetch raw media chunks over HTTP and report progress.
 """
 from typing import Optional
 import requests
-from domain.exceptions import StreamNotFoundError
+from domain.exceptions import JobCancelledError, StreamNotFoundError
 from domain.models import StreamFormat
-from ports.out_bound import MediaDownloaderPort, ProgressCallback
+from ports.out_bound import CancellationCheck, MediaDownloaderPort, ProgressCallback
 
 _CHUNK_SIZE = 1024 * 1024  # 1 MB chunks
 _USER_AGENT = (
@@ -30,6 +30,7 @@ class HttpStreamingDownloader(MediaDownloaderPort):
         stream: StreamFormat,
         output_path: str,
         progress_callback: Optional[ProgressCallback] = None,
+        is_cancelled: Optional[CancellationCheck] = None,
     ) -> str:
         if not stream.url:
             raise StreamNotFoundError(f"Stream {stream.format_id} has no valid URL.")
@@ -37,9 +38,13 @@ class HttpStreamingDownloader(MediaDownloaderPort):
         with self._session.get(stream.url, stream=True, timeout=self._timeout) as resp:
             resp.raise_for_status()
             total_bytes = int(resp.headers.get("content-length", 0))
-            self._write_chunks(resp, output_path, total_bytes, progress_callback)
+            self._write_chunks(resp, output_path, total_bytes, progress_callback, is_cancelled)
 
         return output_path
+
+    def _check_cancellation(self, is_cancelled: Optional[CancellationCheck]) -> None:
+        if is_cancelled and is_cancelled():
+            raise JobCancelledError("Download cancelled by user.")
 
     def _write_chunks(
         self,
@@ -47,10 +52,12 @@ class HttpStreamingDownloader(MediaDownloaderPort):
         output_path: str,
         total_bytes: int,
         callback: Optional[ProgressCallback],
+        is_cancelled: Optional[CancellationCheck] = None,
     ) -> None:
         downloaded = 0
         with open(output_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=_CHUNK_SIZE):
+                self._check_cancellation(is_cancelled)
                 if not chunk:
                     continue
                 f.write(chunk)

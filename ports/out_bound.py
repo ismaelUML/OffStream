@@ -31,6 +31,7 @@ class MediaDownloaderPort(Protocol):
         stream: StreamFormat,
         output_path: str,
         progress_callback: Optional[ProgressCallback] = None,
+        is_cancelled: Optional[CancellationCheck] = None,
     ) -> str:
         """Download raw stream data to disk."""
         ...
@@ -81,6 +82,10 @@ class HistoryRepositoryPort(Protocol):
 
     def add_record(self, record: DownloadRecord) -> int:
         """Insert a download record into storage. Returns record ID."""
+        ...
+
+    def get_record(self, record_id: int) -> Optional[DownloadRecord]:
+        """Retrieve a single historical download record by ID."""
         ...
 
     def list_records(self, limit: int = 100, query: Optional[str] = None) -> List[DownloadRecord]:

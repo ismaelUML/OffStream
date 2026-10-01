@@ -230,8 +230,9 @@ def clear_all_history():
 
 
 def _find_history_file(record_id: int) -> Path:
-    records = manager.get_history(limit=500)
-    matched = next((r for r in records if r.id == record_id), None)
+    # Consulta directa por clave primaria en lugar de levantar 500 filas de SQLite en memoria.
+    # Si el usuario tiene 1000 descargas, con el limite de 500 las mas viejas tiraban 404 falso.
+    matched = manager.get_history_record(record_id)
     if not matched:
         raise HTTPException(status_code=404, detail="Registro no encontrado")
 

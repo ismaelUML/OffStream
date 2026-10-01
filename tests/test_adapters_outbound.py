@@ -73,6 +73,32 @@ def test_http_downloader_stream():
             os.remove(tmp_name)
 
 
+def test_http_downloader_cancellation():
+    from domain.exceptions import JobCancelledError
+    downloader = HttpStreamingDownloader()
+    stream = StreamFormat(format_id="2", extension="mp4", url="http://example.com/video.mp4")
+    with tempfile.NamedTemporaryFile(delete=False) as tf:
+        tmp_name = tf.name
+
+    try:
+        mock_response = MagicMock()
+        mock_response.headers = {"content-length": "100"}
+        mock_response.iter_content = MagicMock(return_value=[b"chunk1", b"chunk2"])
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch.object(downloader._session, "get", return_value=mock_response):
+            with pytest.raises(JobCancelledError):
+                downloader.download_stream(
+                    stream,
+                    tmp_name,
+                    is_cancelled=lambda: True,
+                )
+    finally:
+        if os.path.exists(tmp_name):
+            os.remove(tmp_name)
+
+
 def test_ytdlp_resolver_format_parsing():
     raw_formats = [
         {

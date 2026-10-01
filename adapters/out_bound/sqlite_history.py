@@ -100,6 +100,18 @@ class SqliteHistoryAdapter(HistoryRepositoryPort):
             media_kind=r["media_kind"] or "video",
         )
 
+    def get_record(self, record_id: int) -> Optional[DownloadRecord]:
+        sql = """
+            SELECT id, video_id, title, channel, duration_seconds, created_at, file_path, media_kind
+            FROM download_history
+            WHERE id = ?
+        """
+        with self._get_connection() as conn:
+            row = conn.execute(sql, (record_id,)).fetchone()
+            if not row:
+                return None
+            return self._row_to_record(row)
+
     def list_records(self, limit: int = 100, query: Optional[str] = None) -> List[DownloadRecord]:
         with self._get_connection() as conn:
             rows = self._fetch_rows(conn, limit, query)

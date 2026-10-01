@@ -145,6 +145,11 @@ class DownloadManager(DownloadUseCasePort):
             return []
         return self._history_repo.list_records(limit=limit, query=query)
 
+    def get_history_record(self, record_id: int) -> Optional[DownloadRecord]:
+        if not self._history_repo:
+            return None
+        return self._history_repo.get_record(record_id)
+
     def delete_history_record(self, record_id: int) -> bool:
         if not self._history_repo:
             return False
@@ -295,11 +300,13 @@ class DownloadManager(DownloadUseCasePort):
                 video_stream,
                 temp_video,
                 progress_callback=lambda p: self._update_job_progress(job, p * 0.5),
+                is_cancelled=lambda: job.status == JobStatus.CANCELLED,
             )
             self._downloader.download_stream(
                 audio_stream,
                 temp_audio,
                 progress_callback=lambda p: self._update_job_progress(job, 50.0 + (p * 0.35)),
+                is_cancelled=lambda: job.status == JobStatus.CANCELLED,
             )
             self._set_job_status(job, JobStatus.MUXING)
             return self._processor.mux_video_audio(temp_video, temp_audio, dest_path)

@@ -67,3 +67,12 @@ def test_sqlite_history_clear(history_adapter):
     cleared = adapter.clear_all()
     assert cleared == 2
     assert len(adapter.list_records()) == 0
+
+
+def test_sqlite_history_get_record(history_adapter):
+    adapter, id1, _ = history_adapter
+    record = adapter.get_record(id1)
+    assert record is not None
+    assert record.id == id1
+    assert record.video_id == "abc12345678"
+    assert adapter.get_record(99999) is None

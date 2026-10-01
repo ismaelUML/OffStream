@@ -62,7 +62,9 @@ class DownloadJob:
     progress_percentage: float = 0.0
     output_path: Optional[str] = None
     error_message: Optional[str] = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    # En Python 3.12+ utcnow() esta deprecado. Ademas si created_at es naive
+    # y completed_at es aware (timezone.utc), restar ambas fechas revienta con un TypeError.
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
 
     def update_progress(self, progress: float) -> None:

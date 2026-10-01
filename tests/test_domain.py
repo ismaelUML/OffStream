@@ -30,6 +30,8 @@ def test_download_job_lifecycle():
     assert job.status == JobStatus.COMPLETED
     assert job.output_path == "C:/downloads/video.mp4"
     assert job.completed_at is not None
+    # Verificamos que created_at y completed_at sean compatibles (ambas UTC aware) sin TypeError
+    assert (job.completed_at - job.created_at).total_seconds() >= 0
 
 
 def test_download_job_failure():
