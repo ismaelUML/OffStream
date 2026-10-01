@@ -1,8 +1,8 @@
-"""InnerTube API Stream Resolver (Algorithm "Code Finder").
-Implements StreamResolverPort.
-Connects directly to YouTube's internal InnerTube JSON endpoint to extract
-streaming data, bitrates, and direct stream URLs without external binaries.
-"""
+# Resolver ligero basado en la API privada InnerTube de YouTube.
+# ¿Por qué nos disfrazamos como la app oficial de Android?
+# Porque la interfaz web de YouTube te exige descargar e interpretar un archivo JS de 1 MB
+# repleto de código ofuscado (los famosos n-parameters y ciphers) que cambian cada dos semanas.
+# El cliente de Android, en cambio, recibe URLs de streaming completamente directas y sin ciphers.
 from typing import Any, Dict, List, Optional
 import requests
 from domain.title_cleaner import clean_title
@@ -82,6 +82,8 @@ class InnerTubeResolver:
         )
 
     def _extract_formats(self, streaming_data: Dict[str, Any]) -> List[StreamFormat]:
+        # adaptiveFormats trae los flujos modernos separados por pista (video 1080p sin audio,
+        # o audio Opus/AAC puro). formats trae los streams combinados viejos en 360p/720p.
         raw_list = streaming_data.get("adaptiveFormats", []) + streaming_data.get("formats", [])
         extracted: List[StreamFormat] = []
 
@@ -101,6 +103,9 @@ class InnerTubeResolver:
         return "mp4"
 
     def _parse_single_item(self, item: Dict[str, Any]) -> Optional[StreamFormat]:
+        # Si falta 'url', YouTube devolvió un 'signatureCipher'.
+        # Como este resolver es liviano y no tiene el intérprete JS de yt-dlp,
+        # descartamos los flujos encriptados y conservamos solo los de enlace directo.
         direct_url = item.get("url")
         if not direct_url:
             return None

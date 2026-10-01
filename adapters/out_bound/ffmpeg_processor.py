@@ -23,6 +23,9 @@ class FFmpegProcessorAdapter:
     def mux_video_audio(self, video_path: str, audio_path: str, output_path: str) -> str:
         # Copiamos el video bit por bit (-c:v copy) para que no tarde 15 minutos recomprimiendo.
         # El audio lo dejamos en AAC que es compatible hasta con televisores viejos.
+        # -shortest es clave: YouTube a veces entrega pistas de audio y video con un desfase
+        # de medio segundo. Sin esto, el video se congela al final mientras sigue sonando silencio.
+        # -y sobreescribe sin chillar; si FFmpeg pregunta en stdin sin consola, se queda colgado para siempre.
         cmd = [
             self._binary,
             "-y",
@@ -38,6 +41,8 @@ class FFmpegProcessorAdapter:
 
     def convert_to_mp3(self, source_audio_path: str, output_path: str) -> str:
         # Tiramos a la basura cualquier thumbnail o video (-vn) y sacamos MP3 a 192 kbps constantes.
+        # 192k con libmp3lame es el punto dulce: suena idéntico a 320k pero pesa la mitad
+        # y funciona en estéreos de autos viejos que no leen Opus ni AAC.
         cmd = [
             self._binary,
             "-y",
@@ -61,4 +66,6 @@ class FFmpegProcessorAdapter:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         if proc.returncode != 0:
+            # FFmpeg vomita 40 líneas de banners de compiladores y flags antes de decirte
+            # qué falló. Recortamos los últimos 300 caracteres para ver el error real.
             raise MuxingError(f"{error_context} Detalle del error: {proc.stderr[-300:]}")

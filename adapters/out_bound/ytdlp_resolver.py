@@ -1,6 +1,8 @@
-"""yt-dlp Stream Resolver Adapter.
-Implements StreamResolverPort as a robust secondary engine with dynamic cipher solving.
-"""
+# Resolver principal basado en el motor de yt-dlp.
+# Es nuestro tanque de guerra: corre un intérprete JS interno para descifrar los ciphers
+# y tokens n-parameter que YouTube inventa para romper scrapers.
+# Ojo con Windows: si el navegador está abierto, su base de datos de cookies queda bloqueada
+# por el sistema operativo, lo que obliga a reintentar como invitado si falla.
 from typing import Any, Dict, List, Optional
 from domain.title_cleaner import clean_title
 from domain.url_parser import build_canonical_url, extract_video_id
@@ -17,7 +19,7 @@ from .cookies_helper import is_cookie_error, resolve_cookie_opts
 
 
 class YtDlpResolver:
-    """Uses yt-dlp internal API to extract metadata and decipher scrambled streams."""
+    """Extrae metadata y resuelve firmas dinámicas de YouTube mediante la API de yt-dlp."""
 
     def __init__(self, cookies_browser: Optional[str] = None) -> None:
         if yt_dlp is None:
@@ -39,6 +41,9 @@ class YtDlpResolver:
             return False
 
     def _retry_without_cookies(self, canonical_url: str, opts: Dict[str, Any]) -> Dict[str, Any]:
+        # Si el usuario tiene Chrome o Edge abierto, Windows bloquea el archivo SQLite de cookies
+        # con lock exclusivo. Descartamos cookies y reintentamos como invitado: el 95% de los
+        # videos públicos cargan sin problema y salvamos la petición de un error fatal.
         opts.pop("cookiesfrombrowser", None)
         opts.pop("cookiefile", None)
         try:

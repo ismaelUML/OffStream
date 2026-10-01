@@ -1,8 +1,9 @@
-"""Main entrypoint for yt-global-dl.
-Supports running as a background daemon (for the extension) or as a CLI.
-"""
+# Punto de entrada universal de OffStream / yt-global-dl.
+# Discrimina si arrancamos como daemon silencioso en background (para la extensión de navegador),
+# como interfaz gráfica de escritorio con CustomTkinter, o como herramienta CLI interactiva.
 import os
 import sys
+import traceback
 from adapters.in_bound.cli import run_cli
 from adapters.in_bound.server import start_server
 
@@ -14,9 +15,10 @@ if sys.stdout is None:
 if sys.stderr is None:
     sys.stderr = open(os.devnull, "w")
 
-import traceback
 
 def _dispatch_mode(args: list) -> None:
+    # Si no vienen argumentos (ej: doble click en un script o arranque automático de Windows),
+    # levantamos el daemon por defecto para que la extensión de Chrome tenga backend listo.
     if not args:
         start_server()
         return
@@ -34,9 +36,10 @@ def main() -> None:
     try:
         _dispatch_mode(sys.argv[1:])
     except Exception:
+        # En modo pythonw sin consola, si algo explota Windows mata el proceso en silencio total.
+        # Volcar el stacktrace a daemon_crash.log es la única forma de no volverse loco depurando.
         with open("daemon_crash.log", "a") as f:
             traceback.print_exc(file=f)
-
 
 
 if __name__ == "__main__":

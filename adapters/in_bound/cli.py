@@ -1,6 +1,6 @@
-"""Command Line Interface (CLI) Adapter.
-Driving adapter implementing user interactions from the terminal.
-"""
+# Interfaz por línea de comandos (CLI).
+# Para cuando estás en un servidor remoto, automatizando tareas por cron/powershell,
+# o simplemente querés bajar un video en dos segundos sin abrir la GUI ni el navegador.
 import argparse
 import sys
 import time
@@ -47,6 +47,9 @@ def _print_inspected_video(info) -> None:
 
 
 def _monitor_job_progress(job) -> None:
+    # En Windows, la terminal almacena en buffer la salida estándar si no hay salto de línea.
+    # Usamos \r para sobreescribir la misma línea (sin spamear 200 filas de texto en pantalla)
+    # y sys.stdout.flush() obligatorio para forzar el renderizado inmediato de cada porcentaje.
     last_progress = -1.0
     while job.status not in (JobStatus.COMPLETED, JobStatus.FAILED):
         time.sleep(0.5)

@@ -1,36 +1,38 @@
-"""Domain Exceptions for yt-global-dl.
-"""
+# Excepciones del Dominio Puro.
+# Cero dependencias externas. Si una de estas vuela, sabemos exactamente qué regla
+# de negocio se rompió y no nos comemos un stacktrace misterioso de una librería ajena.
+
 
 class DomainError(Exception):
-    """Base domain exception."""
+    """Excepción raíz del dominio. Si hereda de acá, es un error controlado por nuestra arquitectura."""
     pass
 
 
 class InvalidVideoURLError(DomainError):
-    """Raised when the provided URL cannot be parsed into a valid video identifier."""
+    """El usuario pegó un link deforme, una búsqueda de Google o algo que ningún regex puede salvar."""
     pass
 
 
 class StreamNotFoundError(DomainError):
-    """Raised when no compatible stream could be located for requested format."""
+    """YouTube devolvió la metadata pero el video es privado, de pago o las pistas están bloqueadas por región."""
     pass
 
 
 class ResolutionError(DomainError):
-    """Raised when an external resolver fails to extract video data."""
+    """YouTube cambió un token o bloqueó la IP. Señal para que el circuit breaker active el resolver de respaldo."""
     pass
 
 
 class QueueFullError(DomainError):
-    """Raised when the download queue has reached capacity according to Little's Law."""
+    """Freno de mano por contrapresión: la cola está saturada y meter más jobs colapsaría la CPU y el disco."""
     pass
 
 
 class MuxingError(DomainError):
-    """Raised when merging or processing audio/video streams fails."""
+    """FFmpeg falló al ensamblar pistas. Suele pasar por códecs exóticos o chunks corruptos por corte de red."""
     pass
 
 
 class JobCancelledError(DomainError):
-    """Raised when a download job is cancelled while in progress."""
+    """El usuario abortó la descarga. Cortamos sockets y limpiamos archivos temporales para no dejar basura."""
     pass
