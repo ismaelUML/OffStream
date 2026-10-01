@@ -120,3 +120,124 @@ def test_events_subscription_lifecycle():
 
     manager.unsubscribe_events(q)
     assert q not in manager._listeners
+
+
+class FallbackDownloader:
+    can_download_direct = False
+
+    def download_stream(self, stream, output_path, progress_callback=None, is_cancelled=None):
+        if progress_callback:
+            progress_callback(100.0)
+        return output_path
+
+
+class DummyHistoryRepo:
+    def __init__(self):
+        self.records = {}
+        self._next_id = 1
+
+    def add_record(self, record):
+        from domain.models import DownloadRecord
+        rec = DownloadRecord(
+            id=self._next_id,
+            video_id=record.video_id,
+            title=record.title,
+            channel=record.channel,
+            duration_seconds=record.duration_seconds,
+            created_at=record.created_at,
+            file_path=record.file_path,
+            media_kind=record.media_kind,
+        )
+        self.records[self._next_id] = rec
+        self._next_id += 1
+        return rec.id
+
+    def get_record(self, record_id):
+        return self.records.get(record_id)
+
+    def list_records(self, limit=100, query=None):
+        return list(self.records.values())[:limit]
+
+    def delete_record(self, record_id):
+        return self.records.pop(record_id, None) is not None
+
+    def clear_all(self):
+        count = len(self.records)
+        self.records.clear()
+        return count
+
+
+def test_fallback_audio_pipeline():
+    history = DummyHistoryRepo()
+    manager = DownloadManager(
+        resolver=DummyResolver(),
+        downloader=FallbackDownloader(),
+        processor=DummyProcessor(),
+        storage=DummyStorage(),
+        history_repo=history,
+        max_workers=1,
+    )
+    job = DownloadJob("audio_fallback", "https://youtu.be/test1234567", MediaKind.AUDIO, QualityTarget.AUDIO_HIGH)
+    manager._run_job_lifecycle(job)
+    assert job.status == JobStatus.COMPLETED
+    assert len(history.records) == 1
+    assert manager.get_history_record(1) is not None
+
+
+def test_fallback_video_pipeline():
+    history = DummyHistoryRepo()
+    manager = DownloadManager(
+        resolver=DummyResolver(),
+        downloader=FallbackDownloader(),
+        processor=DummyProcessor(),
+        storage=DummyStorage(),
+        history_repo=history,
+        max_workers=1,
+    )
+    job = DownloadJob("video_fallback", "https://youtu.be/test1234567", MediaKind.VIDEO, QualityTarget.BEST)
+    manager._run_job_lifecycle(job)
+    assert job.status == JobStatus.COMPLETED
+    assert len(history.records) == 1
+
+
+def test_direct_download_cancellation():
+    from domain.exceptions import JobCancelledError
+
+    class CancellingDownloader:
+        can_download_direct = True
+
+        def download_direct(self, url, output_path, is_audio=False, quality=None, progress_callback=None, is_cancelled=None):
+            raise JobCancelledError("Cancelled in test")
+
+    class TrackingStorage(DummyStorage):
+        def __init__(self):
+            self.removed = []
+
+        def remove_files(self, paths):
+            self.removed.extend(paths)
+
+    storage = TrackingStorage()
+    manager = DownloadManager(
+        resolver=DummyResolver(),
+        downloader=CancellingDownloader(),
+        processor=DummyProcessor(),
+        storage=storage,
+    )
+    job = DownloadJob("cancel_audio", "https://youtu.be/test1234567", MediaKind.AUDIO, QualityTarget.AUDIO_HIGH)
+    manager._run_job_lifecycle(job)
+    assert job.status == JobStatus.CANCELLED
+    assert len(storage.removed) > 0
+
+
+def test_history_delegation_and_empty_repo():
+    manager = DownloadManager(
+        resolver=DummyResolver(),
+        downloader=DummyDownloader(),
+        processor=DummyProcessor(),
+        storage=DummyStorage(),
+        history_repo=None,
+    )
+    assert manager.get_history() == []
+    assert manager.get_history_record(1) is None
+    assert manager.delete_history_record(1) is False
+    assert manager.clear_history() == 0
