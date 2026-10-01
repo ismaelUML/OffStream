@@ -3,6 +3,7 @@ branch = True
 omit =
     main.py
     adapters/in_bound/gui.py
+    adapters/in_bound/daemon_client.py
     adapters/in_bound/cli.py
     scripts/*
     clients/*
