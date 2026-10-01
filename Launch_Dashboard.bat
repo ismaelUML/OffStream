@@ -1,2 +1,3 @@
 @echo off
-start pythonw.exe main.py --gui
+cd /d "%~dp0"
+call "%~dp0Start_OffStream.bat"

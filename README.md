@@ -64,7 +64,7 @@ python main.py
 python main.py --gui
 # or: python -m adapters.in_bound.gui
 ```
-Or double-click `Launch_Dashboard.bat`.
+Or simply double-click `Start_OffStream.bat` (or `Launch_Dashboard.bat`).
 - **Tab "⬇ Descargas"**: Paste any URL, select quality (1080p+, MP3, 720p), view live progress, and manage the daemon lifecycle.
 - **Tab "📚 Biblioteca / Historial"**: Type to search through past downloads in real time. Click **▶ Reproducir** to launch in your default media player, or **📁 Carpeta** to highlight the file in Windows Explorer.
 
@@ -83,7 +83,10 @@ python main.py -a "https://music.youtube.com/watch?v=VIDEO_ID" --cookies-from-br
 python main.py -i "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
-All downloads are organized in `Downloads/yt-global-dl/{videos,music}`.
+All downloads are automatically sorted and organized in `Downloads/yt-global-dl/`:
+- `music/`: Configured with Windows Explorer **Music** view template (`desktop.ini`), displaying artist, title, duration, and bitrates.
+- `videos/`: Configured with Windows Explorer **Videos** view template (`desktop.ini`), displaying video resolution, duration, and dimensions.
+- Embedded metadata tags (Title, Artist/Uploader) are injected into MP3/MP4 files for immediate playback compatibility in car stereos, iTunes, and mobile players.
 
 ---
 
@@ -107,7 +110,8 @@ yt-global-dl/
 │   └── windows/                   # Platform background daemons & autostart automation
 ├── tests/                         # Pytest test suite (100% pass rate)
 ├── main.py                        # Unified CLI / Daemon / GUI bootstrapper
-└── Launch_Dashboard.bat           # 1-Click desktop launcher
+├── Start_OffStream.bat            # Fail-safe 1-Click desktop launcher (auto-healing & Python detect)
+└── Launch_Dashboard.bat           # Desktop dashboard launcher
 ```
 
 ```mermaid
