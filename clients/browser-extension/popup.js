@@ -37,11 +37,15 @@ btnPaste.addEventListener("click", async () => {
 
 btnDownloadVideo.addEventListener("click", () => {
   const quality = qualitySelect ? qualitySelect.value : "best";
-  triggerDownload("video", quality);
+  void triggerDownload("video", quality);
 });
 
-btnDownloadAudio.addEventListener("click", () => triggerDownload("audio", "audio_high"));
-btnRefresh.addEventListener("click", refreshJobs);
+btnDownloadAudio.addEventListener("click", () => {
+  void triggerDownload("audio", "audio_high");
+});
+btnRefresh.addEventListener("click", () => {
+  void refreshJobs();
+});
 
 if (btnClear) {
   btnClear.addEventListener("click", async () => {
@@ -84,7 +88,7 @@ async function triggerDownload(kind, quality) {
     }
 
     urlInput.value = "";
-    refreshJobs();
+    await refreshJobs();
   } catch {
     alert("Could not connect to local daemon.\nRun 'python -m adapters.in_bound.server'");
   }
@@ -111,7 +115,7 @@ function renderJobs() {
     .map((job) => {
       const isCancellable = ["pending", "resolving", "downloading", "muxing"].includes(job.status);
       const cancelBtnHtml = isCancellable
-        ? `<button class="btn-cancel-job" onclick="cancelJob('${job.job_id}')" title="Cancel Job">✕</button>`
+        ? `<button class="btn-cancel-job" onclick="void cancelJob('${job.job_id}')" title="Cancel Job">✕</button>`
         : "";
       const pct = Math.round(job.progress_percentage || 0);
 
@@ -164,7 +168,7 @@ function connectSSE() {
         if (payload.type === "connected") {
           statusPill.className = "status-pill online";
           statusText.textContent = "Online";
-          refreshJobs();
+          void refreshJobs();
         } else if (payload.type === "job_update") {
           updateJobInList(payload);
         }
@@ -184,4 +188,4 @@ function connectSSE() {
 
 // Inicializamos SSE y sincronizamos estado
 connectSSE();
-refreshJobs();
+void refreshJobs();
